@@ -1,0 +1,1 @@
+The markdown documents in the documentation folder where generated with GitHub Copilot agent-mode through provided context such as the original kickoff_meeting_notes.md and email responses from our supervisor.
