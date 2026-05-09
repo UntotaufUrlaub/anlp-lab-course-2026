@@ -1,0 +1,12 @@
+# Environments
+.env
+.envrc
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.idea/
+__pycache__/
+.ipynb_checkpoints/
