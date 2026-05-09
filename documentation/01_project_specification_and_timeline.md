@@ -6,10 +6,6 @@
 
 ---
 
-## Introduction
-
-- Name, field of study, project related experience, confidence with handling papers
-
 ## Motivation
 
 - Real-world datasets like tickets/issues have **mixed properties** combining free text and structured fields
@@ -30,7 +26,7 @@ This project explores the extension of information retrieval beyond classical te
 
 1. **Free text fields** (descriptions, abstracts, comments)
 2. **Structured/categorical fields** (labels, types, classifications)
-3. **Hierarchical relationships** in categorical data (the most interesting aspect)
+3. **Hierarchical relationships** in categorical data (the most interesting aspect for Jakob)
 
 Example structures:
 
@@ -61,15 +57,15 @@ This project leverages established techniques from KG retrieval and text retriev
     - Example (GitHub): Error types → {Frontend, Backend, Infrastructure}
     - Example (Papers): Authors → {Research Labs, Institutes, Companies}
   - Ground truth (or ability to create it) (known related pairs for evaluation)
+    - If there is nothing matching this a 100% we can think about adapting a dataset to a synthetic dataset, by applying a clever method to generate expected outputs. (Jakob can share the idea of the common approach here, in the next meeting, if you are not familiar.)
 - **Recommended combination**: GitHub Issues + Scientific Papers
-- Alternative: Other ticket systems (Jira, etc.) + Academic citations
+- If more time available, get alternative data sets: Other ticket systems (Jira, etc.) + Academic citations
 
 ### Phase 2: Literature Review (Complete by **May 28**)
 
 - Identify promising retrieval techniques from recent papers
 - Supervisor emphasis: **embeddings + GNN refinement layers** trained on small datasets
 - Understand how hierarchical structures enhance retrieval
-- Focus on papers referenced in project specification
 
 ### Phase 3: Benchmark Implementation (Complete by **July 9**)
 
@@ -88,7 +84,7 @@ This project leverages established techniques from KG retrieval and text retriev
 
 - Invest 2-3 days early on: Tech stack/architecture design
 - Main phase: Dataset prep, baseline implementation, experiments
-- Budget 3-5 days end buffer: LLM evaluation and final runs may take time
+- Budget 3-5 days end buffer: evaluation and final runs may take time
 
 ### Phase 4: Presentation (Complete by **July 14**)
 
@@ -112,60 +108,6 @@ This project leverages established techniques from KG retrieval and text retriev
 - **End of exam period**: X Final report due (broadened evaluation)
 
 **Note**: Timeline is flexible based on challenges discovered. Communicate conflicts (vacation, exams) that affect uniform pacing.
-
-## Implementation Strategy
-
-### Unified Data Schema & Modular Architecture
-
-To efficiently handle 2+ datasets, implement modular data processing:
-
-**Common Data Schema** (unified representation across all datasets):
-
-```
-{
-  id: unique_identifier,
-  text_fields: {
-    main: string,           // primary content (issue desc, abstract, etc.)
-    secondary: [string]     // comments, references, additional text
-  },
-  metadata: {
-    title: string,
-    created: timestamp,
-    source: string          // dataset source identifier
-  },
-  structured_fields: {
-    categorical: {          // simple categories
-      field_name: value,
-      field_name: value
-    },
-    hierarchical: {         // hierarchical structures
-      category_name: [hierarchy_path]
-    }
-  },
-  related_entities: {
-    explicit: [ids],        // known related items (ground truth)
-    metadata_based: [ids]   // derived relations (same category, author, etc.)
-  }
-}
-```
-
-**Dataset-Specific ETL Functions:**
-
-```python
-def prepare_github_issues(raw_data) -> CommonSchema
-  # Map GitHub API response to common schema
-  # Handle: labels→hierarchical categories, linked_issues→related_entities
-
-def prepare_papers(raw_data) -> CommonSchema
-  # Map paper metadata to common schema
-  # Handle: authors→hierarchical affiliations, citations→related_entities
-```
-
-**Benefits:**
-
-- Embedding, retrieval, and evaluation code works uniformly
-- Minimal dataset-specific logic
-- Easy to add new datasets later
 
 ### Ground Truth Strategy
 
