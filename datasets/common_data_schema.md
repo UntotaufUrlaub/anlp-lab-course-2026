@@ -1,16 +1,7 @@
 # Unified Common Data Schema for Mixed-Property Retrieval Benchmarks
 
-<span style="color:red">Depends on our approach, how the data sets look like. This is only a draft until we know for sure how the data sets look like and what is possible!!!</span>
-
-This schema is designed to combine datasets such as **GitHub issues / pull requests** and **scientific papers** into one benchmark format.  
-It supports:
-
-- free text retrieval
-- structured categorical fields
-- hierarchical categories
-- explicit relations for ground truth
-- weakly derived relations for analysis
-- multiple datasets in one unified pipeline
+This schema combines the **GitHub issues** and **scientific papers** datasets into one unified benchmark format.
+It supports free text retrieval, structured categorical fields, hierarchical categories, explicit relations for ground truth, and multiple datasets in one unified pipeline.
 
 ---
 
@@ -18,19 +9,19 @@ It supports:
 
 The schema should be:
 
-1. **Unified** across datasets  
-   One record format for GitHub, papers, tickets, and future sources.
+1. **Unified** across datasets
+   One record format for GitHub issues and papers (and future sources).
 
-2. **Retrieval-friendly**  
+2. **Retrieval-friendly**
    Easy to index, embed, and evaluate.
 
-3. **Extensible**  
-   New datasets can be added without changing core code.
+3. **Extensible**
+   New datasets and fields (e.g. entities for GNN) can be populated later without changing core code.
 
-4. **Ground-truth aware**  
+4. **Ground-truth aware**
    Explicit relevance judgments are stored separately from documents.
 
-5. **Hierarchy-aware**  
+5. **Hierarchy-aware**
    Supports nested categorical structures such as:
    - label → sublabel
    - domain → subdomain → topic
@@ -41,24 +32,21 @@ The schema should be:
 
 ## 2. Recommended File Layout
 
-We can save it as a file temporary to then load it, so we save us the preprocessing all the time
-
-Suggestions by ChatGPT <br>
 Use two main files:
 
-- `documents.jsonl`  
+- `documents.jsonl`
   One row per item to retrieve.
 
-- `qrels.jsonl`  
+- `qrels.jsonl`
   One row per query–relevance pair.
 
 Optional:
 
-- `queries.jsonl`  
-  If queries are not simply the same as documents.
+- `queries.jsonl`
+  If queries are kept separate from the document corpus (relevant for the papers dataset).
 
-- `relations.jsonl`  
-  For explicit graph edges beyond retrieval labels.
+- `relations.jsonl`
+  For explicit graph edges beyond retrieval labels (useful for GNN construction).
 
 ---
 
@@ -70,45 +58,49 @@ Each dataset item is stored in a common document format.
 {
   "id": "string",
   "source_dataset": "string",
-  "source_type": "github_issue | github_pr | paper | ticket | other",
-  "title": "string",
+  "source_type": "github_issue | paper | query",
+
+  "title": "string | null",
   "main_text": "string",
   "secondary_texts": ["string"],
-  "language": "string",
+
   "timestamps": {
-    "created_at": "string",
-    "updated_at": "string",
-    "closed_at": "string"
+    "created_at": "string | null",
+    "closed_at": "string | null"
   },
+
   "structured_fields": {
     "categorical": {
       "field_name": "string"
     },
+    "multi_label": {
+      "field_name": ["string"]
+    },
     "hierarchical": {
       "field_name": ["level_1", "level_2", "level_3"]
-    },
-    "multi_label": {
-      "field_name": ["label_a", "label_b"]
     }
   },
+
   "entities": {
     "people": ["string"],
     "organizations": ["string"],
     "projects": ["string"],
     "topics": ["string"]
   },
+
   "relations": {
-    "explicit_related_ids": ["string"],
-    "metadata_related_ids": ["string"]
+    "explicit_related_ids": ["string"]
   },
+
   "retrieval_metadata": {
     "split": "train | dev | test | unlabeled",
     "is_queryable": true,
     "is_candidate": true
   },
+
   "raw_source": {
-    "native_id": "string",
-    "url": "string"
+    "native_id": "string | null",
+    "url": "string | null"
   }
 }
 ```
@@ -121,54 +113,49 @@ Each dataset item is stored in a common document format.
 
 A unique canonical identifier across all datasets.
 
-Example:
+Examples:
 
 - `github:apache-airflow:issue:1234`
-- `paper:10.1145/1234567.8901234`
+- `paper:12345678`
+- `query:papers:set_a:0042`
 
 ---
 
 ### `source_dataset`
 
-The dataset name or collection name. TODO: We could also name this as source_dataset_type and make it categorical, hence `github | paper`. <br>
-Or we do it on a finer granularity, e.g. github repo pytorch but we also have a raw_source field..
+The dataset name or collection name.
 
 Examples:
 
-- `github_apache`
-- `pubmed`
-- `acl_papers`
-- `jira_company_x`
+- `github_apache_airflow`
+- `semantic_scholar`
+- `set_a` (from `query_set`)
 
 ---
 
 ### `source_type`
 
-The document type in the original source. <br>
-Depending on how diverse our data sets are we should utilize this, e.g. github data set consists of issues, issue comment and pull requests or more. <br>
-Status quo: paper data set uses queries in natural language and has paper ids mapped. So it is not a paper to papers data set afaik.
+The document type in the original source.
 
-Recommended values:
+Values:
 
 - `github_issue`
-- `github_pr`
 - `paper`
 - `query`
-- `issue_comment`
-- `commit`
-- `other`
+
+For the papers dataset, queries and corpus papers are distinct record types. Queries carry `is_candidate: false` and papers carry `is_queryable: false`. This makes the pipeline logic clean and avoids special-casing downstream.
 
 ---
 
 ### `title`
 
-Short textual title. Or query text depending on the data sets.
+Short textual title, or `null` if not applicable (e.g. for query records).
 
 Examples:
 
 - GitHub issue title
 - paper title
-- query text
+- `null` for a natural language query
 
 ---
 
@@ -178,70 +165,71 @@ The primary free-text content used for retrieval.
 
 Examples:
 
-- GitHub issue description
+- GitHub issue body
 - paper abstract
+- natural language query string
 
 ---
 
 ### `secondary_texts`
 
-Additional free-text fields that may help retrieval.
+Additional free-text fields that may assist retrieval. Stored as a list so sources can be concatenated or selectively used later.
 
 Examples:
 
-- comments
-- PR description
-- review discussion
-- citation context
-- notes
-
-This field is a list so you can concatenate or selectively use text sources later.
+- GitHub issue comments
+- full paper text
+- PR description or review discussion
 
 ---
 
 ### `timestamps`
 
-If needed for later, maybe links are outdated.
+ISO 8601 datetime strings, or `null` if not available.
 
 Fields:
 
 - `created_at`
-- `updated_at`
 - `closed_at`
-
-Use ISO 8601 strings.
 
 ---
 
 ### `structured_fields.categorical`
 
-Flat categorical metadata. Maybe a label is given by the meta data directly or indirectly could be utilized for the hierchical part too.
+Flat single-value categorical metadata.
 
 Examples:
 
-- `status`: `open`
-- `priority`: `high`
-- `venue`: `acl`
-- `component`: `frontend`
+- `status`: `open` / `closed` (derived from `closed_at` being null for GitHub)
+- `specificity`: from query metadata in papers dataset
+- `quality`: from query metadata in papers dataset
+
+---
+
+### `structured_fields.multi_label`
+
+Fields with multiple labels that do not form a strict hierarchy.
+
+Examples:
+
+- GitHub issue `labels`: `["bug", "scheduler"]`
+- keywords or tags
 
 ---
 
 ### `structured_fields.hierarchical`
 
-The most important field for your project.
+The most important structured field for graph-based and GNN approaches.
 
-Represent hierarchical paths as ordered lists from general to specific. This could be inferred by a (self-constructed) graph,
-this could be the key to get way better accuracy than the baseline through a GNN for instance. <br>
+Represent hierarchical paths as ordered lists from general to specific. Currently empty `{}` for both datasets — to be populated once label hierarchies or affiliation trees are derived.
 
-This depends completely and the data set and how we tackel inferring/categorizing it, Jakob already mentioned some possible labels/relations e.g. Front-/backend split, or University -> Insitute -> Group. <br>
-
-Possible examples:
+Possible future examples:
 
 GitHub:
 
 ```json
 "hierarchical": {
-  "bug_category": ["infrastructure", "logging", "parsing"]
+  "bug_category": ["infrastructure", "scheduler", "parsing"]
 }
 ```
 
@@ -249,118 +237,155 @@ Papers:
 
 ```json
 "hierarchical": {
-  "affiliation": ["Germany", "TUM", "Chair of Information Retrieval"]
+  "affiliation": ["Germany", "TUM", "Chair of Information Retrieval"],
+  "topic_path": ["information retrieval", "graph retrieval", "GNNs"]
 }
 ```
 
-This format makes it easy to compute:
-
-- prefix match
-- hierarchical distance
-- shared ancestor similarity
-
----
-
-### `structured_fields.multi_label`
-
-Use for fields with several labels that do not form a strict hierarchy.
-
-Examples:
-
-- tags
-- keywords
-- topics
-- multiple authors’ areas
+This format makes it easy to compute prefix match, hierarchical distance, and shared ancestor similarity — all useful as GNN edge features.
 
 ---
 
 ### `entities`
 
-Normalized named entities or important linked objects.
+Named entities and important linked objects. Currently empty lists for both datasets, kept as a forward-looking placeholder for GNN node and edge feature construction.
 
-Examples:
+Fields:
 
-- people: authors, assignees, reviewers
-- organizations: institutions, companies, labs
-- projects: repo names, venues, tracks
-- topics: IR, GNN, retrieval
+- `people`: authors, assignees, reporters, reviewers
+- `organizations`: institutions, companies, labs
+- `projects`: repository names, venues, tracks
+- `topics`: IR, GNN, retrieval, etc.
 
-This field is optional but useful for graph-style retrieval and GNN features.
+For GitHub issues, `people` (assignees) and `projects` (repository) are partially derivable already. For papers, `people` (authors) and `organizations` (affiliations) are the natural targets once author metadata is available. These map directly onto graph nodes in a GNN setting.
 
 ---
 
 ### `relations.explicit_related_ids`
 
-The most important field for ground truth or supervision.
+The most important field for ground truth and supervision.
 
 Contains IDs of items known to be directly related.
 
 Examples:
 
-- issue ↔ duplicate issue
-- issue ↔ fixing PR
-- paper ↔ cited paper
-- paper ↔ same-sample sibling paper
-- query ↔ papers
-
----
-
-### `relations.metadata_related_ids`
-
-Relations derived from metadata rather than directly annotated.
-Might need manual check, too much work?
-
-Examples:
-
-- same label
-- same author
-- same institution
-- same repository
-- same component
-
-These should usually be treated as:
-
-- weak positives
-- auxiliary graph edges
-- analysis-only relations
-
-Not all of them should be used as hard ground truth.
+- GitHub: related issue IDs (from `linked_issues.related_issue_nos`)
+- Papers corpus: cited paper IDs (from `citations`)
+- Queries: gold-standard paper IDs (from `corpusids`)
 
 ---
 
 ### `retrieval_metadata`
 
-Depends on how our data set is structured -> if it always query/issue -> linked stuff then we can drop this imho, except you see a big benefit by having this.
 Controls benchmark splits and retrieval roles.
 
-Suggested fields:
+Fields:
 
-- `split`: train / dev / test / unlabeled
+- `split`: `train` / `dev` / `test` / `unlabeled`
 - `is_queryable`: whether this item can be used as a query
 - `is_candidate`: whether this item can be retrieved as a candidate
 
-This is helpful when queries and candidates differ by type.
-For example, you may want:
+For the papers dataset:
 
-- issues as queries
-- issues + PRs as candidates
+- query records → `is_queryable: true`, `is_candidate: false`
+- paper records → `is_queryable: false`, `is_candidate: true`
+
+For GitHub issues:
+
+- issue records → `is_queryable: true`, `is_candidate: true`
 
 ---
 
 ### `raw_source`
 
-Keeps the original source reference.
+Keeps the original source reference for debugging and provenance.
 
 Fields:
 
-- `native_id`: original dataset ID
+- `native_id`: original dataset ID (e.g. `issue_no`, `corpusid`)
 - `url`: original URL if available
-
-This is useful for debugging and provenance.
 
 ---
 
-## 5. Example: GitHub Issue Record
+## 5. Field Mapping Tables
+
+### GitHub Issues
+
+| Schema field                           | Source column                            | Notes                                         |
+| -------------------------------------- | ---------------------------------------- | --------------------------------------------- |
+| `id`                                   | `issue_no` + `repository`                | e.g. `github:apache-airflow:issue:23145`      |
+| `source_dataset`                       | `repository`                             | e.g. `github_apache_airflow`                  |
+| `source_type`                          | —                                        | hardcode `github_issue`                       |
+| `title`                                | `issue_title`                            |                                               |
+| `main_text`                            | `issue_body`                             |                                               |
+| `secondary_texts`                      | `comments`                               | list of comment strings                       |
+| `timestamps.created_at`                | `created_at`                             | ISO 8601                                      |
+| `timestamps.closed_at`                 | `closed_at`                              | ISO 8601, nullable                            |
+| `structured_fields.categorical.status` | derived                                  | `open` / `closed` from `closed_at` null check |
+| `structured_fields.multi_label.labels` | `labels`                                 |                                               |
+| `structured_fields.hierarchical`       | —                                        | empty `{}` for now                            |
+| `entities.people`                      | —                                        | empty for now; assignees derivable later      |
+| `entities.organizations`               | —                                        | empty for now                                 |
+| `entities.projects`                    | `repository`                             | derivable now if desired                      |
+| `entities.topics`                      | —                                        | empty for now                                 |
+| `relations.explicit_related_ids`       | `related_issue_nos` from `linked_issues` | join on `issue_no`                            |
+| `retrieval_metadata.is_queryable`      | —                                        | `true`                                        |
+| `retrieval_metadata.is_candidate`      | —                                        | `true`                                        |
+| `raw_source.native_id`                 | `issue_no`                               |                                               |
+| `raw_source.url`                       | `issue_url`                              |                                               |
+
+### Paper Corpus Records
+
+| Schema field                      | Source column | Notes                                       |
+| --------------------------------- | ------------- | ------------------------------------------- |
+| `id`                              | `corpusid`    | e.g. `paper:12345678`                       |
+| `source_dataset`                  | —             | hardcode e.g. `semantic_scholar`            |
+| `source_type`                     | —             | hardcode `paper`                            |
+| `title`                           | `title`       |                                             |
+| `main_text`                       | `abstract`    |                                             |
+| `secondary_texts`                 | `full_paper`  | wrap in list: `[full_paper]`                |
+| `timestamps.created_at`           | —             | `null`                                      |
+| `timestamps.closed_at`            | —             | `null`                                      |
+| `structured_fields.categorical`   | —             | empty `{}` for now                          |
+| `structured_fields.multi_label`   | —             | empty `{}` for now                          |
+| `structured_fields.hierarchical`  | —             | empty `{}` for now                          |
+| `entities.people`                 | —             | empty for now; authors derivable later      |
+| `entities.organizations`          | —             | empty for now; affiliations derivable later |
+| `entities.projects`               | —             | empty for now                               |
+| `entities.topics`                 | —             | empty for now                               |
+| `relations.explicit_related_ids`  | `citations`   | list of cited `corpusid`s                   |
+| `retrieval_metadata.is_queryable` | —             | `false`                                     |
+| `retrieval_metadata.is_candidate` | —             | `true`                                      |
+| `raw_source.native_id`            | `corpusid`    |                                             |
+| `raw_source.url`                  | —             | `null`                                      |
+
+### Query Records (Papers Dataset)
+
+| Schema field                                | Source column | Notes                          |
+| ------------------------------------------- | ------------- | ------------------------------ |
+| `id`                                        | derived       | e.g. `query:papers:set_a:0042` |
+| `source_dataset`                            | `query_set`   |                                |
+| `source_type`                               | —             | hardcode `query`               |
+| `title`                                     | —             | `null`                         |
+| `main_text`                                 | `query`       | natural language query string  |
+| `secondary_texts`                           | —             | `[]`                           |
+| `timestamps.created_at`                     | —             | `null`                         |
+| `timestamps.closed_at`                      | —             | `null`                         |
+| `structured_fields.categorical.specificity` | `specificity` |                                |
+| `structured_fields.categorical.quality`     | `quality`     |                                |
+| `structured_fields.hierarchical`            | —             | empty `{}` for now             |
+| `entities`                                  | —             | all empty lists for now        |
+| `relations.explicit_related_ids`            | `corpusids`   | gold-standard paper IDs        |
+| `retrieval_metadata.is_queryable`           | —             | `true`                         |
+| `retrieval_metadata.is_candidate`           | —             | `false`                        |
+| `raw_source.native_id`                      | —             | `null`                         |
+| `raw_source.url`                            | —             | `null`                         |
+
+---
+
+## 6. Concrete Record Examples
+
+### GitHub Issue Record
 
 ```json
 {
@@ -373,34 +398,23 @@ This is useful for debugging and provenance.
     "Comment 1: Happens only on Linux.",
     "Comment 2: Related to file path handling."
   ],
-  "language": "en",
   "timestamps": {
     "created_at": "2025-03-14T10:22:00Z",
-    "updated_at": "2025-03-15T12:10:00Z",
     "closed_at": "2025-03-18T08:40:00Z"
   },
   "structured_fields": {
-    "categorical": {
-      "status": "closed",
-      "priority": "high",
-      "component": "scheduler"
-    },
-    "hierarchical": {
-      "bug_category": ["infrastructure", "scheduler", "parsing"]
-    },
-    "multi_label": {
-      "labels": ["bug", "parsing", "linux"]
-    }
+    "categorical": { "status": "closed" },
+    "multi_label": { "labels": ["bug", "scheduler"] },
+    "hierarchical": {}
   },
   "entities": {
-    "people": ["maintainer_a"],
-    "organizations": ["Apache Airflow"],
-    "projects": ["airflow"],
-    "topics": ["workflow orchestration", "parsing"]
+    "people": [],
+    "organizations": [],
+    "projects": ["apache-airflow"],
+    "topics": []
   },
   "relations": {
-    "explicit_related_ids": ["github:apache-airflow:pr:9123"],
-    "metadata_related_ids": ["github:apache-airflow:issue:23099"]
+    "explicit_related_ids": ["github:apache-airflow:issue:23099"]
   },
   "retrieval_metadata": {
     "split": "test",
@@ -414,67 +428,93 @@ This is useful for debugging and provenance.
 }
 ```
 
----
-
-## 6. Example: Paper Record
+### Paper Corpus Record
 
 ```json
 {
-  "id": "paper:10.1145/1234567.8901234",
-  "source_dataset": "acl_papers",
+  "id": "paper:12345678",
+  "source_dataset": "semantic_scholar",
   "source_type": "paper",
   "title": "Graph Neural Methods for Mixed-Property Retrieval",
   "main_text": "We study retrieval over datasets containing both text and structured hierarchical metadata ...",
-  "secondary_texts": [
-    "Citation context from related works section",
-    "Author affiliations"
-  ],
-  "language": "en",
+  "secondary_texts": ["Full paper text here ..."],
   "timestamps": {
-    "created_at": "2024-06-01T00:00:00Z",
-    "updated_at": "2024-06-10T00:00:00Z",
+    "created_at": null,
+    "closed_at": null
+  },
+  "structured_fields": {
+    "categorical": {},
+    "multi_label": {},
+    "hierarchical": {}
+  },
+  "entities": {
+    "people": [],
+    "organizations": [],
+    "projects": [],
+    "topics": []
+  },
+  "relations": {
+    "explicit_related_ids": ["paper:87654321", "paper:11223344"]
+  },
+  "retrieval_metadata": {
+    "split": "test",
+    "is_queryable": false,
+    "is_candidate": true
+  },
+  "raw_source": {
+    "native_id": "12345678",
+    "url": null
+  }
+}
+```
+
+### Query Record
+
+```json
+{
+  "id": "query:papers:set_a:0042",
+  "source_dataset": "set_a",
+  "source_type": "query",
+  "title": null,
+  "main_text": "methods for hierarchical document retrieval using graph networks",
+  "secondary_texts": [],
+  "timestamps": {
+    "created_at": null,
     "closed_at": null
   },
   "structured_fields": {
     "categorical": {
-      "venue": "ACL",
-      "track": "main"
+      "specificity": "high",
+      "quality": "good"
     },
-    "hierarchical": {
-      "affiliation": ["Germany", "TUM", "Department of Computer Science"],
-      "topic_path": ["information retrieval", "graph retrieval", "GNNs"]
-    },
-    "multi_label": {
-      "keywords": ["retrieval", "graph neural networks", "mixed data"]
-    }
+    "multi_label": {},
+    "hierarchical": {}
   },
   "entities": {
-    "people": ["author_1", "author_2"],
-    "organizations": ["TUM"],
-    "projects": ["ACL 2024"],
-    "topics": ["information retrieval", "graph neural networks"]
+    "people": [],
+    "organizations": [],
+    "projects": [],
+    "topics": []
   },
   "relations": {
-    "explicit_related_ids": ["paper:10.1145/9876543.2109876"],
-    "metadata_related_ids": ["paper:10.1145/5555555.6666666"]
+    "explicit_related_ids": ["paper:12345678", "paper:87654321"]
   },
   "retrieval_metadata": {
     "split": "test",
     "is_queryable": true,
-    "is_candidate": true
+    "is_candidate": false
   },
   "raw_source": {
-    "native_id": "10.1145/1234567.8901234",
-    "url": "https://dl.acm.org/doi/10.1145/1234567.8901234"
+    "native_id": null,
+    "url": null
   }
 }
 ```
 
 ---
 
-## 7. Retrieval Ground Truth Schema
+## 7. Retrieval Ground Truth Schema (Qrels)
 
-Depends on our approach, how the data sets look like!!! Remember this is a draft, since the data sets are not final yet, we could not make final design decisions.
 Store relevance judgments separately from documents.
 
 ```json
@@ -482,24 +522,9 @@ Store relevance judgments separately from documents.
   "query_id": "string",
   "candidate_id": "string",
   "relevance": 0,
-  "relation_type": "duplicate | citation | linked_issue | same_topic | same_author | same_component | manually_judged",
-  "source": "explicit | weak | synthetic",
+  "relation_type": "linked_issue | citation | corpusid_match | manually_judged",
+  "source": "explicit | weak",
   "split": "train | dev | test"
-}
-```
-
----
-
-## 8. Example Qrels Record
-
-```json
-{
-  "query_id": "github:apache-airflow:issue:23145",
-  "candidate_id": "github:apache-airflow:pr:9123",
-  "relevance": 3,
-  "relation_type": "linked_pr",
-  "source": "explicit",
-  "split": "test"
 }
 ```
 
@@ -508,122 +533,77 @@ Recommended relevance scale:
 - `3` = direct positive / gold relation
 - `2` = strong weak positive
 - `1` = soft related
-- `0` = not relevant
+- `0` = not relevant / unjudged
 
-If you want a strict IR benchmark, keep only:
+For a strict IR benchmark keep only `3` as positive and `0` as negative.
 
-- `3` as positive
-- `0` as negative / unjudged
+### Example Qrels Records
 
----
-
-## 9. Recommended Benchmark Setup
-
-A clean setup for your project is:
-
-### Queries
-
-Use:
-
-- GitHub issues
-- paper abstracts or titles
-- optional tickets
-
-### Candidates
-
-Use:
-
-- issues
-- PRs
-- papers
-
-### Ground Truth
-
-Use:
-
-- explicit links when available
-- citations for papers
-- issue–PR links for GitHub
-- duplicates or same-incident links where available
-
-### Weak Supervision
-
-Use only as auxiliary labels:
-
-- same label
-- same component
-- same institution
-- same topic path
-- same author group
-
----
-
-## 10. Suggested Minimal Common Schema
-
-If you want the smallest practical version, use this:
+Papers query to paper:
 
 ```json
 {
-  "id": "string",
-  "source_dataset": "string",
-  "source_type": "string",
-  "title": "string",
-  "text": "string",
-  "metadata": {
-    "created_at": "string",
-    "category": "string",
-    "labels": ["string"]
-  },
-  "hierarchy": {
-    "path": ["string", "string", "string"]
-  },
-  "relations": {
-    "positive_ids": ["string"]
-  }
+  "query_id": "query:papers:set_a:0042",
+  "candidate_id": "paper:12345678",
+  "relevance": 3,
+  "relation_type": "corpusid_match",
+  "source": "explicit",
+  "split": "test"
 }
 ```
 
-This minimal version is enough to:
+GitHub issue to linked issue:
 
-- unify datasets
-- train baselines
-- evaluate retrieval
-- extend later without redesign
-
----
-
-## 11. Practical Recommendation
-
-For your project, I would use this structure:
-
-- `documents.jsonl` for all items
-- `qrels.jsonl` for retrieval labels
-- `relations.jsonl` for optional graph edges
-- `splits.json` for train/dev/test partitioning
-
-That gives you:
-
-- clean benchmark logic
-- easy ETL per dataset
-- easy evaluation
-- compatibility with BM25, dense retrieval, and GNN-based reranking
+```json
+{
+  "query_id": "github:apache-airflow:issue:23145",
+  "candidate_id": "github:apache-airflow:issue:23099",
+  "relevance": 3,
+  "relation_type": "linked_issue",
+  "source": "explicit",
+  "split": "test"
+}
+```
 
 ---
 
-## 12. Notes on Mapping GitHub and Papers
+## 8. Recommended Benchmark Setup
 
-### GitHub mapping
+### Queries
 
-- `title` → issue title / PR title
-- `main_text` → issue body / PR description
-- `structured_fields.categorical.component` → repo component label
-- `structured_fields.hierarchical.bug_category` → label hierarchy if available
-- `relations.explicit_related_ids` → linked issue / linked PR / duplicate
+- GitHub issues (`is_queryable: true`)
+- Paper queries (`source_type: query`)
 
-### Paper mapping
+### Candidates
 
-- `title` → paper title
-- `main_text` → abstract
-- `secondary_texts` → citations / author info / sections
-- `structured_fields.hierarchical.affiliation` → institution hierarchy
-- `relations.explicit_related_ids` → citations
+- GitHub issues (`is_candidate: true`)
+- Paper corpus records (`is_candidate: true`)
+
+### Ground Truth
+
+- GitHub: explicit issue–issue links from `linked_issues.related_issue_nos`
+- Papers: gold corpus IDs from `corpusids` in query frame; citations from `citations` in corpus frame
+
+### Weak Supervision (future)
+
+Use only as auxiliary labels or soft GNN edges:
+
+- Same GitHub label
+- Same repository component
+- Same author group
+- Same institution
+- Same topic path
+
+---
+
+## 9. What Is Deferred
+
+These fields are intentionally empty now but kept in the schema for future use:
+
+| Field                            | Reason deferred                 | Future source                                |
+| -------------------------------- | ------------------------------- | -------------------------------------------- |
+| `structured_fields.hierarchical` | No hierarchy data available yet | Derived label trees, affiliation hierarchies |
+| `entities.people`                | Not extracted yet               | NER on text, GitHub assignees, paper authors |
+| `entities.organizations`         | Not extracted yet               | Author affiliations, company names           |
+| `entities.topics`                | Not extracted yet               | NER, keyword extraction, topic models        |
+| `relations` weak positives       | Extra derivation work           | Same label, same author, same institution    |
