@@ -10,3 +10,9 @@ venv.bak/
 .idea/
 __pycache__/
 .ipynb_checkpoints/
+data/
+output/
+cache/
+*.parquet
+*.jsonl
+project_datasets/dataset_experimentation.ipynb

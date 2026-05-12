@@ -77,7 +77,8 @@ def make_qrel(query_id, candidate_id, relation_type, source="explicit",
 
 def process_github(issues_df, linked_df, split="unlabeled"):
     # Build relation lookup: issue_no -> [related_issue_nos]
-    relations = linked_df.groupby("issue_no")["related_issue_nos"].apply(list).to_dict()
+    # modified because linked_df already has lists
+    relations = linked_df.set_index("issue_no")["related_issue_nos"].to_dict()
 
     docs, qrels = [], []
     for _, r in issues_df.iterrows():
@@ -85,7 +86,7 @@ def process_github(issues_df, linked_df, split="unlabeled"):
         no = str(r["issue_no"])
         canon_id = github_id(repo, no)
 
-        # TODO BUG: this does not work as intendend, list as a string.. fix it!!!
+        # code should work now
         related = [github_id(repo, str(x)) for x in json.loads(str(relations.get(int(no), [])))]
 
         docs.append(make_doc(
