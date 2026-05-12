@@ -82,8 +82,10 @@ def process_github(issues_df, linked_df, split="unlabeled"):
         no       = str(r["issue_no"])
         canon_id = github_id(repo, no)
         
-        # TODO BUG: this does not work as intendend, list as a string.. fix it!!!
-        related  = [github_id(repo, str(x)) for x in json.loads(str(relations.get(int(no), [])))]
+
+        # TODO: Check processing before, the list has this format [[8, 9, 13, 15, 20, 381]]
+        #       That is why [0] was needed if we wanted for each relation one line
+        related  = [github_id(repo, str(x)) for x in relations.get(int(no), [])[0]]
 
         docs.append(make_doc(
             id               = canon_id,
