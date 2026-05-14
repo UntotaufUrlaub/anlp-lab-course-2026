@@ -20,18 +20,18 @@ def load_json_dataframes(path):
     issues_rows = []
     for e in data:
         issues_rows.append({
-            "issue_no":    e.get("issue_no", ""),
-            "issue_url":   e.get("issue_url", ""),
+            "issue_no": e.get("issue_no", ""),
+            "issue_url": e.get("issue_url", ""),
             "issue_title": e.get("issue_title", ""),
-            "issue_body":  e.get("issue_body", ""),
-            "repository":  e.get("issue_repository", {}).get("nameWithOwner", ""),
-            "created_at":  e.get("created_at", ""),
-            "closed_at":   e.get("closed_at", ""),
-            "labels":      "|".join(
+            "issue_body": e.get("issue_body", ""),
+            "repository": e.get("issue_repository", {}).get("nameWithOwner", ""),
+            "created_at": e.get("created_at", ""),
+            "closed_at": e.get("closed_at", ""),
+            "labels": "|".join(
                 n["node"]["label"]
                 for n in e.get("issue_labels", {}).get("edges", [])
             ),
-            "comments":    " | ".join(
+            "comments": " | ".join(
                 n["node"]["comment_body"]
                 for n in e.get("issue_comments", {}).get("edges", [])
             ),
@@ -44,13 +44,13 @@ def load_json_dataframes(path):
             pr = node.get("pull_info", {})
             if pr and pr.get("pull_url") not in prs_seen:
                 prs_seen[pr["pull_url"]] = {
-                    "pull_no":         pr.get("pull_no"),
-                    "pull_url":        pr.get("pull_url"),
-                    "pull_title":      pr.get("pull_title"),
-                    "pull_body":       pr.get("pull_body", ""),
-                    "repository":      pr.get("repository", {}).get("nameWithOwner", ""),
+                    "pull_no": pr.get("pull_no"),
+                    "pull_url": pr.get("pull_url"),
+                    "pull_title": pr.get("pull_title"),
+                    "pull_body": pr.get("pull_body", ""),
+                    "repository": pr.get("repository", {}).get("nameWithOwner", ""),
                     "pull_created_at": pr.get("createdAt"),
-                    "pull_closed_at":  pr.get("closedAt"),
+                    "pull_closed_at": pr.get("closedAt"),
                 }
     prs_df = pd.DataFrame(list(prs_seen.values()))
 
@@ -61,11 +61,12 @@ def load_json_dataframes(path):
             if pr:
                 links_rows.append({
                     "issue_url": e.get("issue_url", ""),
-                    "pull_url":  pr.get("pull_url"),
+                    "pull_url": pr.get("pull_url"),
                 })
     links_df = pd.DataFrame(links_rows)
 
     return issues_df, prs_df, links_df
+
 
 def construct_issue_links(issues_df, links_df):
     """
@@ -89,4 +90,3 @@ def construct_issue_links(issues_df, links_df):
         for issue_no, related in related_issues.items()
     ])
     return result
-

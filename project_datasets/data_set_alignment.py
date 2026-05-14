@@ -14,8 +14,10 @@ from pathlib import Path
 def github_id(repository, issue_no):
     return f"github:{repository}:issue:{issue_no}"
 
+
 def paper_id(corpusid):
     return f"paper:{corpusid}"
+
 
 def query_id(query_set, idx):
     return f"query:{query_set}:{str(idx).zfill(4)}"
@@ -39,15 +41,15 @@ def make_doc(id, source_dataset, source_type, title, main_text,
         "secondary_texts": secondary_texts or [],
         "timestamps": {"created_at": created_at, "closed_at": closed_at},
         "structured_fields": {
-            "categorical":  categorical  or {},
-            "multi_label":  multi_label  or {},
+            "categorical": categorical or {},
+            "multi_label": multi_label or {},
             "hierarchical": hierarchical or {},
         },
         "entities": {
-            "people":        people        or [],
+            "people": people or [],
             "organizations": organizations or [],
-            "projects":      projects      or [],
-            "topics":        topics        or [],
+            "projects": projects or [],
+            "topics": topics or [],
         },
         "relations": {"explicit_related_ids": explicit_related_ids or []},
         "retrieval_metadata": {
@@ -57,6 +59,7 @@ def make_doc(id, source_dataset, source_type, title, main_text,
         },
         "raw_source": {"native_id": native_id, "url": url},
     }
+
 
 def make_qrel(query_id, candidate_id, relation_type, source="explicit",
               relevance=3, split="unlabeled"):
@@ -74,35 +77,34 @@ def make_qrel(query_id, candidate_id, relation_type, source="explicit",
 
 def process_github(issues_df, linked_df, split="unlabeled"):
     # Build relation lookup: issue_no -> [related_issue_nos]
-    relations = linked_df.groupby("issue_no")["related_issue_nos"].apply(list).to_dict()
+    # modified because linked_df already has lists
+    relations = linked_df.set_index("issue_no")["related_issue_nos"].to_dict()
 
     docs, qrels = [], []
     for _, r in issues_df.iterrows():
-        repo     = str(r["repository"])
-        no       = str(r["issue_no"])
+        repo = str(r["repository"])
+        no = str(r["issue_no"])
         canon_id = github_id(repo, no)
-        
 
-        # TODO: Check processing before, the list has this format [[8, 9, 13, 15, 20, 381]]
-        #       That is why [0] was needed if we wanted for each relation one line
-        related  = [github_id(repo, str(x)) for x in relations.get(int(no), [])[0]]
+        # code should work now
+        related = [github_id(repo, str(x)) for x in json.loads(str(relations.get(int(no), [])))]
 
         docs.append(make_doc(
-            id               = canon_id,
-            source_dataset   = repo,
-            source_type      = "github_issue",
-            title            = r.get("issue_title"),
-            main_text        = r.get("issue_body") or "",
-            secondary_texts  = r["comments"] if isinstance(r.get("comments"), list) else [],
-            created_at       = _iso(r.get("created_at")),
-            closed_at        = _iso(r.get("closed_at")),
-            categorical      = {"status": "closed" if pd.notna(r.get("closed_at")) else "open"},
-            multi_label      = {"labels": r["labels"] if isinstance(r.get("labels"), list) else []},
-            projects         = [repo],
-            explicit_related_ids = related,
-            split            = split,
-            native_id        = no,
-            url              = r.get("issue_url"),
+            id=canon_id,
+            source_dataset=repo,
+            source_type="github_issue",
+            title=r.get("issue_title"),
+            main_text=r.get("issue_body") or "",
+            secondary_texts=r["comments"] if isinstance(r.get("comments"), list) else [],
+            created_at=_iso(r.get("created_at")),
+            closed_at=_iso(r.get("closed_at")),
+            categorical={"status": "closed" if pd.notna(r.get("closed_at")) else "open"},
+            multi_label={"labels": r["labels"] if isinstance(r.get("labels"), list) else []},
+            projects=[repo],
+            explicit_related_ids=related,
+            split=split,
+            native_id=no,
+            url=r.get("issue_url"),
         ))
         for cid in related:
             qrels.append(make_qrel(canon_id, cid, "linked_issue", split=split))
@@ -117,40 +119,40 @@ def process_papers(queries_df, corpus_df, split="unlabeled"):
 
     # Corpus
     for _, r in corpus_df.iterrows():
-        cid  = str(r["corpusid"])
+        cid = str(r["corpusid"])
         cited = [paper_id(str(x)) for x in (r["citations"] if isinstance(r.get("citations"), list) else [])]
-        full  = r.get("full_paper")
+        full = r.get("full_paper")
         docs.append(make_doc(
-            id             = paper_id(cid),
-            source_dataset = "semantic_scholar",
-            source_type    = "paper",
-            title          = r.get("title"),
-            main_text      = r.get("abstract") or "",
-            secondary_texts= [full] if isinstance(full, str) and full else [],
-            explicit_related_ids = cited,
-            split          = split,
-            is_queryable   = False,
-            native_id      = cid,
+            id=paper_id(cid),
+            source_dataset="semantic_scholar",
+            source_type="paper",
+            title=r.get("title"),
+            main_text=r.get("abstract") or "",
+            secondary_texts=[full] if isinstance(full, str) and full else [],
+            explicit_related_ids=cited,
+            split=split,
+            is_queryable=False,
+            native_id=cid,
         ))
 
     # Queries
     for query_set, group in queries_df.groupby("query_set"):
         for idx, (_, r) in enumerate(group.iterrows()):
-            qid  = query_id(query_set, idx)
+            qid = query_id(query_set, idx)
             gold = [paper_id(str(x)) for x in r["corpusids"].tolist()]
             docs.append(make_doc(
-                id             = qid,
-                source_dataset = str(query_set),
-                source_type    = "query",
-                title          = None,
-                main_text      = r.get("query") or "",
-                categorical    = {
+                id=qid,
+                source_dataset=str(query_set),
+                source_type="query",
+                title=None,
+                main_text=r.get("query") or "",
+                categorical={
                     "specificity": str(r["specificity"]) if pd.notna(r.get("specificity")) else "",
-                    "quality":     str(r["quality"])     if pd.notna(r.get("quality"))     else "",
+                    "quality": str(r["quality"]) if pd.notna(r.get("quality")) else "",
                 },
-                explicit_related_ids = gold,
-                split          = split,
-                is_candidate   = False,
+                explicit_related_ids=gold,
+                split=split,
+                is_candidate=False,
             ))
             for cid in gold:
                 qrels.append(make_qrel(qid, cid, "corpusid_match", split=split))
@@ -188,18 +190,17 @@ import kagglehub
 from json_processing import load_json_dataframes, construct_issue_links
 
 if __name__ == "__main__":
-    
     path = kagglehub.dataset_download("zakareaalshara/android-closed-issues-20110101-20210101-clean")
     (issues, prs, links) = load_json_dataframes(path)
     issue_links = construct_issue_links(issues, links)
-    
-    issues_df  = issues
-    linked_df  = issue_links
+
+    issues_df = issues
+    linked_df = issue_links
     queries_df = load_dataset("princeton-nlp/LitSearch", "query", split="full").to_pandas()
-    corpus_df  = load_dataset("princeton-nlp/LitSearch", "corpus_clean", split="full", streaming=True).to_pandas()
+    corpus_df = load_dataset("princeton-nlp/LitSearch", "corpus_clean", split="full", streaming=True).to_pandas()
 
-    gh_docs,  gh_qrels  = process_github(issues_df, linked_df,   split="unlabeled")
-    pap_docs, pap_qrels = process_papers(queries_df, corpus_df,  split="unlabeled")
+    gh_docs, gh_qrels = process_github(issues_df, linked_df, split="unlabeled")
+    pap_docs, pap_qrels = process_papers(queries_df, corpus_df, split="unlabeled")
 
-    write_jsonl(gh_docs  + pap_docs,  "output/documents.jsonl")
+    write_jsonl(gh_docs + pap_docs, "output/documents.jsonl")
     write_jsonl(gh_qrels + pap_qrels, "output/qrels.jsonl")
