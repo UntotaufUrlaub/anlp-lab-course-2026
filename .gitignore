@@ -13,6 +13,7 @@ __pycache__/
 data/
 output/
 cache/
+project_datasets/cache/
 *.parquet
 *.jsonl
 project_datasets/dataset_experimentation.ipynb
