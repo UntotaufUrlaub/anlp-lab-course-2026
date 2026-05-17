@@ -443,15 +443,15 @@ Fields:
     "closed_at": null
   },
   "structured_fields": {
-    "categorical": {},
-    "multi_label": {},
+    "categorical": {"venue_name": None, "venue_type": None, "journal": None, "journal_volume": None},
+    "multi_label": {"fields_of_study": [], "publication_types":[]},
     "hierarchical": {}
   },
   "entities": {
-    "people": [],
-    "organizations": [],
+    "people": [list of authors],
+    "organizations": [list of correponding organizations of authors],
     "projects": [],
-    "topics": []
+    "topics": [semanticscholar topic, but only says ComputerScience]
   },
   "relations": {
     "explicit_related_ids": ["paper:87654321", "paper:11223344"]
