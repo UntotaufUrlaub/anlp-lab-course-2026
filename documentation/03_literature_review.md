@@ -58,7 +58,7 @@ Retrieval stage:
 ![alt text](corona_framework_retrieval_stage.png)
 ![alt text](corona_framework_retrieval_stage_detailed.png)
 
-- Subgraph retriever: retrieve the most relevant items based on the query — designed as a simple subgraph retriever similar to the attention mechanism.
+- Subgraph retriever: retrieve the most relevant items based on the query, designed as a simple subgraph retriever similar to the attention mechanism.
 
 [LLMs, Infer Structure]
 **FastRAG** - use LLM to extract information via schema learning and script learning -> use LLMs to infer structure; in our case potentially the label hierarchy.
@@ -80,7 +80,7 @@ Code: `github.com/Graph-COM/Struc-Emb`
 Paper: Struc-EMB: The Potential of Structure-Aware Encoding in Language Embeddings (arXiv:2510.08774)
 
 [Graph, Heterogeneous Data, Metadata]
-**SAGE** - Structure Aware Graph Expansion. Offline: construct chunk-level graph using metadata-driven similarity (shared labels, topic overlap, entity co-occurrence) with percentile-based pruning — no costly KG extraction. Online: baseline retriever selects seed nodes -> expand first-hop neighbors -> filter with dense+sparse scoring.
+**SAGE** - Structure Aware Graph Expansion. Offline: construct chunk-level graph using metadata-driven similarity (shared labels, topic overlap, entity co-occurrence) with percentile-based pruning, no costly KG extraction. Online: baseline retriever selects seed nodes -> expand first-hop neighbors -> filter with dense+sparse scoring.
 Relevant because edge construction can directly use our label hierarchy and ticket metadata.
 +5.7–8.5 recall points over flat retrieval on heterogeneous corpora.
 Paper: SAGE: Structure Aware Graph Expansion for Retrieval of Heterogeneous Data (arXiv:2602.16964)
@@ -113,12 +113,43 @@ Paper: Hierarchical Retrieval: The Geometry and a Pretrain-Finetune Recipe (arXi
 [Hyperbolic Geometry, Embeddings]
 **HypRAG / HyperbolicRAG** - replace Euclidean embedding space with hyperbolic space (Lorentz/Poincaré model), which grows exponentially with radius and naturally preserves tree-like hierarchies. Siblings cluster; parent-child distance reflects specificity. 20%+ radial separation between general and specific concepts, absent in Euclidean embeddings.
 HyperbolicRAG uses dual-space: Euclidean semantic similarity + hyperbolic structural awareness.
-Remark: requires Riemannian optimizers and careful numerical handling — too much scope, maybe Phase 5, but rather not.
+Remark: requires Riemannian optimizers and careful numerical handling, too much scope, maybe Phase 5, but rather not.
 Papers: HypRAG (arXiv:2602.07739), HyperbolicRAG (arXiv:2511.18808)
 
 [Hierarchy, Coarse-to-Fine, Index]
 **Hierarchical Semantic Retrieval (Cobweb)** - use label hierarchy directly as a tree-structured retrieval index. Internal nodes as coarse prototypes -> retrieve at branch level first, drill to leaves. Simple, explainable, no new training required.
 Paper: Hierarchical Semantic Retrieval with Cobweb (arXiv:2510.02539)
+
+# Possible Applications on our Use Case / Domain
+
+### Tier 1 - Text Retrieval (Baseline)
+
+BM25, sparse keyword baseline. Good for exact error name matches in tickets. Blind to hierarchy and paraphrase.
+Sentence Transformers / DPR, dense semantic baseline. Treats all fields as flat concatenated string, exactly the limitation richer tiers should beat. Can check for title-only vs. concat-all-fields to understand noise from unstructured descriptions as an extra.
+
+### Tier 2 - Metadata-Aware Retrieval
+
+Multi-field embeddings, separate embedding(?) per field (description, label path). Tests whether structured fields carry signal beyond text alone.
+Hierarchical pretraining (from Hierarchical Retrieval paper), lost-in-the-long-distance is directly relevant here. Pretrain embeddings to respect label hierarchy distance, then fine-tune on issue-link / citation pairs. Cobweb, use label hierarchy as tree-structured index, no training required. Coarse branch first (e.g. all Backend issues), drill to leaves (depends on how sophisticated/deep the hierachies are). Shows well what pure hierarchy can achieve as the next level.
+
+### Tier 3 - Graph Expansion
+
+SAGE, most directly applicable. Offline graph construction via metadata-driven similarity maps cleanly onto our data:
+
+GitHub: shared labels, same-PR resolution, explicit issue links
+Papers: citation edges, shared-author edges, same-venue/research group/chair etc. weak links
+
+Citation / issue-link expansion, take top-K dense results, add direct neighbors as additional candidates, re-score by original embedding.
+Struc-EMB, inject neighbor texts directly at encoding time (sequential concatenation variant). Append linked issue titles / cited paper titles before encoding.
+
+### Tier 4 - GNN Refinement
+
+GNN-Ret / RGNN-Ret, build subgraph over top-K candidates, run 2-layer GNN to propagate relevance and re-rank. Designed for small training sets, fits moreo or less our scope.
+Proposed novel pipeline:
+
+Multi-field encode: e_text = Encoder(description) + e_hier = HierEmbed(label_path) -> fuse via MLP
+Coarse retrieval: FAISS ANN on fused embedding → top-K candidates + subgraph
+GNN refinement: 2-layer GNN over candidate subgraph (hierarchical edges + explicit links) -> re-ranked results
 
 ## Remark
 
