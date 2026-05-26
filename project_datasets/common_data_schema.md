@@ -30,7 +30,9 @@ The schema should be:
 
 ---
 
-## 2. Recommended File Layout
+## 2. File Layout
+
+qrels also known as _set relevance assessments_.
 
 Use two main files:
 
@@ -63,11 +65,6 @@ Each dataset item is stored in a common document format.
   "title": "string | null",
   "main_text": "string",
   "secondary_texts": ["string"],
-
-  "timestamps": {
-    "created_at": "string | null",
-    "closed_at": "string | null"
-  },
 
   "structured_fields": {
     "categorical": {
@@ -111,13 +108,11 @@ Each dataset item is stored in a common document format.
 
 ### `id`
 
-A unique canonical identifier across all datasets.
+A unique identifier across all datasets.
 
-Examples:
+Example:
 
-- `github:apache-airflow:issue:1234`
-- `paper:12345678`
-- `query:papers:set_a:0042`
+- `1234`
 
 ---
 
@@ -180,17 +175,6 @@ Examples:
 - GitHub issue comments
 - full paper text
 - PR description or review discussion
-
----
-
-### `timestamps`
-
-ISO 8601 datetime strings, or `null` if not available.
-
-Fields:
-
-- `created_at`
-- `closed_at`
 
 ---
 
@@ -319,8 +303,6 @@ Fields:
 | `title`                                | `issue_title`                            |                                               |
 | `main_text`                            | `issue_body`                             |                                               |
 | `secondary_texts`                      | `comments`                               | list of comment strings                       |
-| `timestamps.created_at`                | `created_at`                             | ISO 8601                                      |
-| `timestamps.closed_at`                 | `closed_at`                              | ISO 8601, nullable                            |
 | `structured_fields.categorical.status` | derived                                  | `open` / `closed` from `closed_at` null check |
 | `structured_fields.multi_label.labels` | `labels`                                 |                                               |
 | `structured_fields.hierarchical`       | —                                        | empty `{}` for now                            |
@@ -344,8 +326,6 @@ Fields:
 | `title`                           | `title`       |                                             |
 | `main_text`                       | `abstract`    |                                             |
 | `secondary_texts`                 | `full_paper`  | wrap in list: `[full_paper]`                |
-| `timestamps.created_at`           | —             | `null`                                      |
-| `timestamps.closed_at`            | —             | `null`                                      |
 | `structured_fields.categorical`   | —             | empty `{}` for now                          |
 | `structured_fields.multi_label`   | —             | empty `{}` for now                          |
 | `structured_fields.hierarchical`  | —             | empty `{}` for now                          |
@@ -369,8 +349,6 @@ Fields:
 | `title`                                     | —             | `null`                         |
 | `main_text`                                 | `query`       | natural language query string  |
 | `secondary_texts`                           | —             | `[]`                           |
-| `timestamps.created_at`                     | —             | `null`                         |
-| `timestamps.closed_at`                      | —             | `null`                         |
 | `structured_fields.categorical.specificity` | `specificity` |                                |
 | `structured_fields.categorical.quality`     | `quality`     |                                |
 | `structured_fields.hierarchical`            | —             | empty `{}` for now             |
@@ -398,10 +376,6 @@ Fields:
     "Comment 1: Happens only on Linux.",
     "Comment 2: Related to file path handling."
   ],
-  "timestamps": {
-    "created_at": "2025-03-14T10:22:00Z",
-    "closed_at": "2025-03-18T08:40:00Z"
-  },
   "structured_fields": {
     "categorical": { "status": "closed" },
     "multi_label": { "labels": ["bug", "scheduler"] },
@@ -438,10 +412,6 @@ Fields:
   "title": "Graph Neural Methods for Mixed-Property Retrieval",
   "main_text": "We study retrieval over datasets containing both text and structured hierarchical metadata ...",
   "secondary_texts": ["Full paper text here ..."],
-  "timestamps": {
-    "created_at": null,
-    "closed_at": null
-  },
   "structured_fields": {
     "categorical": {"venue_name": None, "venue_type": None, "journal": None, "journal_volume": None},
     "multi_label": {"fields_of_study": [], "publication_types":[]},
@@ -478,10 +448,6 @@ Fields:
   "title": null,
   "main_text": "methods for hierarchical document retrieval using graph networks",
   "secondary_texts": [],
-  "timestamps": {
-    "created_at": null,
-    "closed_at": null
-  },
   "structured_fields": {
     "categorical": {
       "specificity": "high",
