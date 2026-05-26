@@ -74,9 +74,12 @@ def process_github(issues_df, linked_df, id_counter, gh_id_map, split="unlabeled
         id_counter["count"] += 1
         gh_id_map[issue_no] = id  # Map original issue_no to global ID
 
-        # code should work now
-        related_issues = json.loads(str(relations.get(issue_no, [])))
-        # Map original issue numbers to global IDs (they may not exist yet, keep as-is for now)
+        # Get related issues (pickle preserves list type)
+        related_issues = relations.get(issue_no, [])
+        if not isinstance(related_issues, list):
+            related_issues = []
+        
+        # Map original issue numbers to global IDs
         related = [gh_id_map.get(int(x), str(x)) for x in related_issues]
 
         # Parse pipe-separated labels
@@ -137,7 +140,9 @@ def process_papers(queries_df, corpus_df, id_counter, paper_id_map, split="unlab
         for idx, (_, r) in enumerate(group.iterrows()):
             qid = str(id_counter["count"])
             id_counter["count"] += 1
-            gold = [str(x) for x in r["corpusids"].tolist()]
+            # Get corpusids (pickle preserves list type)
+            corpusids = r["corpusids"] if isinstance(r["corpusids"], list) else r["corpusids"].tolist()
+            gold = [str(x) for x in corpusids]
             docs.append(make_doc(
                 id=qid,
                 source_dataset=str(query_set),
@@ -204,11 +209,11 @@ def parse_pipe_separated_labels(label_str):
 
 def load_or_cache_datasets(use_cache=False, cache_dir="cache"):
     """
-    Load datasets from cache (parquet) if available, otherwise download and cache.
+    Load datasets from cache (pickle) if available, otherwise download and cache.
     
     Args:
         use_cache: If True, try to load from cache first
-        cache_dir: Directory to store cached parquet files
+        cache_dir: Directory to store cached pickle files
     
     Returns:
         Tuple of (issues_df, issue_links, queries_df, corpus_df)
@@ -216,18 +221,18 @@ def load_or_cache_datasets(use_cache=False, cache_dir="cache"):
     cache_path = Path(cache_dir)
     cache_path.mkdir(exist_ok=True)
     
-    issues_cache = cache_path / "issues.parquet"
-    linked_cache = cache_path / "issue_links.parquet"
-    queries_cache = cache_path / "queries.parquet"
-    corpus_cache = cache_path / "corpus.parquet"
+    issues_cache = cache_path / "issues.pkl"
+    linked_cache = cache_path / "issue_links.pkl"
+    queries_cache = cache_path / "queries.pkl"
+    corpus_cache = cache_path / "corpus.pkl"
     
     # Try loading from cache if requested and all files exist
     if use_cache and all([f.exists() for f in [issues_cache, linked_cache, queries_cache, corpus_cache]]):
-        print("\n📦 Loading from cache...")
-        issues = pd.read_parquet(issues_cache)
-        issue_links = pd.read_parquet(linked_cache)
-        queries_df = pd.read_parquet(queries_cache)
-        corpus_df = pd.read_parquet(corpus_cache)
+        print("\n📦 Loading from cache (pickle)...")
+        issues = pd.read_pickle(issues_cache)
+        issue_links = pd.read_pickle(linked_cache)
+        queries_df = pd.read_pickle(queries_cache)
+        corpus_df = pd.read_pickle(corpus_cache)
         print(f"✓ Loaded {len(issues)} issues, {len(issue_links)} links, {len(queries_df)} queries, {len(corpus_df)} papers")
         return issues, issue_links, queries_df, corpus_df
     
@@ -254,11 +259,11 @@ def load_or_cache_datasets(use_cache=False, cache_dir="cache"):
     print(f"      ✓ Loaded {len(corpus_df)} papers")
     
     # Cache for next run
-    print("\n💾 Caching datasets to parquet...")
-    issues.to_parquet(issues_cache, compression="snappy")
-    issue_links.to_parquet(linked_cache, compression="snappy")
-    queries_df.to_parquet(queries_cache, compression="snappy")
-    corpus_df.to_parquet(corpus_cache, compression="snappy")
+    print("\n💾 Caching datasets to pickle...")
+    issues.to_pickle(issues_cache)
+    issue_links.to_pickle(linked_cache)
+    queries_df.to_pickle(queries_cache)
+    corpus_df.to_pickle(corpus_cache)
     print("✓ Cache saved. Use --use-cache flag next run for faster loading")
     
     return issues, issue_links, queries_df, corpus_df
