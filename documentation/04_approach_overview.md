@@ -133,6 +133,13 @@ Pipeline: https://arxiv.org/abs/2406.06572
 5.1 LLM-based metadata extraction
 - FastRAG: https://arxiv.org/abs/2411.13773
 
+5.2 
+- CaseLink paper: https://arxiv.org/pdf/2403.17780
+   - predicting links between legal cases
+   - builds on the SAGE method
+   - 1st establishes node similarity links through NLP means
+   - then refines using GNN and indutive learning
+
 
 
 
