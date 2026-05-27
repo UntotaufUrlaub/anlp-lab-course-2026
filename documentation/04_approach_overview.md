@@ -58,7 +58,7 @@ Answer Question 1: Does metadata/hierarchy improve retrieval?
 
 2.1 Hierarchy-aware representation learning  
   - learn embeddings that preserve hierarchy
-  - Hierarchy Paper: https://arxiv.org/abs/2509.16411
+  - Hierarchy Paper: https://arxiv.org/pdf/2501.18707
 
 2.2 Hierarchy-aware indexing/navigation
   - use hierarchy itself as retrieval structure
@@ -77,7 +77,7 @@ Examples:
 
 Answer Question 1: Does including local graph structure improve retrieval?
 
-3.1 SAGE Paper:https://arxiv.org/abs/2503.01713
+3.1 SAGE Paper: https://arxiv.org/abs/2602.16964
   - build graph offline:  
     - example edges:
         - GitHub    
