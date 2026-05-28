@@ -148,8 +148,9 @@ GNN-Ret / RGNN-Ret, build subgraph over top-K candidates, run 2-layer GNN to pro
 Proposed novel pipeline:
 
 Multi-field encode: e_text = Encoder(description) + e_hier = HierEmbed(label_path) -> fuse via MLP
-Coarse retrieval: FAISS ANN on fused embedding → top-K candidates + subgraph
+Coarse retrieval: Facebook AI Similarity Search (FAISS) NN on fused embedding -> top-K candidates + subgraph
 GNN refinement: 2-layer GNN over candidate subgraph (hierarchical edges + explicit links) -> re-ranked results
+https://github.com/facebookresearch/faiss
 
 ## Remark
 
