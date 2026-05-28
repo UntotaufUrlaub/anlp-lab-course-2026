@@ -16,8 +16,7 @@ def make_doc(id, source_dataset, source_type, title, main_text,
              secondary_texts=None, created_at=None, closed_at=None,
              categorical=None, multi_label=None, hierarchical=None,
              people=None, organizations=None, projects=None, topics=None,
-             explicit_related_ids=None, split="unlabeled",
-             is_queryable=True, is_candidate=True,
+             explicit_related_ids=None, is_queryable=True, is_candidate=True,
              native_id=None, url=None):
     return {
         "id": id,
@@ -39,7 +38,6 @@ def make_doc(id, source_dataset, source_type, title, main_text,
         },
         "relations": {"explicit_related_ids": explicit_related_ids or []},
         "retrieval_metadata": {
-            "split": split,
             "is_queryable": is_queryable,
             "is_candidate": is_candidate,
         },
@@ -47,21 +45,17 @@ def make_doc(id, source_dataset, source_type, title, main_text,
     }
 
 
-def make_qrel(query_id, candidate_id, relation_type, source="explicit",
-              relevance=3, split="unlabeled"):
+def make_qrel(query_id, candidate_ids, relation_type):
     return {
         "query_id": query_id,
-        "candidate_id": candidate_id,
-        "relevance": relevance,
+        "candidate_ids": candidate_ids,
         "relation_type": relation_type,
-        "source": source,
-        "split": split,
     }
 
 
 # ── GitHub ────────────────────────────────────────────────────────────────────
 
-def process_github(issues_df, linked_df, id_counter, gh_id_map, split="unlabeled"):
+def process_github(issues_df, linked_df, id_counter, gh_id_map):
     # Build relation lookup: issue_no -> [related_issue_nos]
     # modified because linked_df already has lists
     relations = linked_df.set_index("issue_no")["related_issue_nos"].to_dict()
@@ -98,19 +92,19 @@ def process_github(issues_df, linked_df, id_counter, gh_id_map, split="unlabeled
             hierarchical=hierarchical_data,
             projects=[repo],
             explicit_related_ids=related,
-            split=split,
             native_id=str(issue_no),
             url=r.get("issue_url"),
         ))
-        for cid in related:
-            qrels.append(make_qrel(id, cid, "linked_issue", split=split))
+        # for cid in related:
+        
+        qrels.append(make_qrel(id, related, "linked_issue"))
 
     return docs, qrels
 
 
 # ── Papers ────────────────────────────────────────────────────────────────────
 
-def process_papers(queries_df, corpus_df, id_counter, paper_id_map, split="unlabeled"):
+def process_papers(queries_df, corpus_df, id_counter, paper_id_map):
     docs, qrels = [], []
 
     # Corpus
@@ -130,7 +124,6 @@ def process_papers(queries_df, corpus_df, id_counter, paper_id_map, split="unlab
             main_text=r.get("abstract") or "",
             secondary_texts=[full] if isinstance(full, str) and full else [],
             explicit_related_ids=cited,
-            split=split,
             is_queryable=False,
             native_id=corpusid,
         ))
@@ -154,11 +147,9 @@ def process_papers(queries_df, corpus_df, id_counter, paper_id_map, split="unlab
                     "quality": str(r["quality"]) if pd.notna(r.get("quality")) else "",
                 },
                 explicit_related_ids=gold,
-                split=split,
                 is_candidate=False,
             ))
-            for cid in gold:
-                qrels.append(make_qrel(qid, cid, "corpusid_match", split=split))
+            qrels.append(make_qrel(qid, gold, "corpusid_match"))
 
     return docs, qrels
 
@@ -287,11 +278,11 @@ if __name__ == "__main__":
     paper_id_map = {}  # Maps original paper corpusid -> global ID
 
     print("\n🔄 Processing GitHub issues...")
-    gh_docs, gh_qrels = process_github(issues_df, linked_df, id_counter, gh_id_map, split="unlabeled")
+    gh_docs, gh_qrels = process_github(issues_df, linked_df, id_counter, gh_id_map)
     print(f"✓ Processed {len(gh_docs)} issues and {len(gh_qrels)} qrels")
     
     print("\n🔄 Processing papers...")
-    pap_docs, pap_qrels = process_papers(queries_df, corpus_df, id_counter, paper_id_map, split="unlabeled")
+    pap_docs, pap_qrels = process_papers(queries_df, corpus_df, id_counter, paper_id_map)
     print(f"✓ Processed {len(pap_docs)} papers/queries and {len(pap_qrels)} qrels")
 
     print("\n📝 Writing output files...")

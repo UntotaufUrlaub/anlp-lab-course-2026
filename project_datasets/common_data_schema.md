@@ -90,7 +90,6 @@ Each dataset item is stored in a common document format.
   },
 
   "retrieval_metadata": {
-    "split": "train | dev | test | unlabeled",
     "is_queryable": true,
     "is_candidate": true
   },
@@ -265,9 +264,12 @@ Controls benchmark splits and retrieval roles.
 
 Fields:
 
-- `split`: `train` / `dev` / `test` / `unlabeled`
 - `is_queryable`: whether this item can be used as a query
 - `is_candidate`: whether this item can be retrieved as a candidate
+
+Future possible:
+
+- `split`: `train` / `dev` / `test` / `unlabeled`
 
 For the papers dataset:
 
@@ -391,7 +393,6 @@ Fields:
     "explicit_related_ids": ["github:apache-airflow:issue:23099"]
   },
   "retrieval_metadata": {
-    "split": "test",
     "is_queryable": true,
     "is_candidate": true
   },
@@ -427,7 +428,6 @@ Fields:
     "explicit_related_ids": ["paper:87654321", "paper:11223344"]
   },
   "retrieval_metadata": {
-    "split": "test",
     "is_queryable": false,
     "is_candidate": true
   },
@@ -466,7 +466,6 @@ Fields:
     "explicit_related_ids": ["paper:12345678", "paper:87654321"]
   },
   "retrieval_metadata": {
-    "split": "test",
     "is_queryable": true,
     "is_candidate": false
   },
@@ -482,18 +481,19 @@ Fields:
 ## 7. Retrieval Ground Truth Schema (Qrels)
 
 Store relevance judgments separately from documents.
+Future idea:
+source (type) e.g. explicit | weak
+split e.g. train | dev | test
 
 ```json
 {
   "query_id": "string",
   "candidate_id": "string",
-  "relevance": 0,
-  "relation_type": "linked_issue | citation | corpusid_match | manually_judged",
-  "source": "explicit | weak",
-  "split": "train | dev | test"
+  "relation_type": "linked_issue | citation | corpusid_match | manually_judged"
 }
 ```
 
+**Future task, not relevant for now**
 Recommended relevance scale:
 
 - `3` = direct positive / gold relation
@@ -509,12 +509,9 @@ Papers query to paper:
 
 ```json
 {
-  "query_id": "query:papers:set_a:0042",
-  "candidate_id": "paper:12345678",
-  "relevance": 3,
-  "relation_type": "corpusid_match",
-  "source": "explicit",
-  "split": "test"
+  "query_id": "0042",
+  "candidate_id": "12345678",
+  "relation_type": "corpusid_match"
 }
 ```
 
@@ -522,12 +519,9 @@ GitHub issue to linked issue:
 
 ```json
 {
-  "query_id": "github:apache-airflow:issue:23145",
-  "candidate_id": "github:apache-airflow:issue:23099",
-  "relevance": 3,
-  "relation_type": "linked_issue",
-  "source": "explicit",
-  "split": "test"
+  "query_id": "23145",
+  "candidate_id": "23099",
+  "relation_type": "linked_issue"
 }
 ```
 
