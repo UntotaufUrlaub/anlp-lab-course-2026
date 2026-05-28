@@ -25,7 +25,6 @@ This repository contains the benchmark pipeline for dataset acquisition, alignme
 - `code/validate_benchmark.py` — verify data files, benchmark script, and environment
 - `code/benchmark_requirements.txt` — benchmark dependencies
 - `project_datasets/requirements.txt` — dataset preparation dependencies
-- `run_baseline_benchmark.bat` / `run_baseline_benchmark.sh` — helper scripts to execute the benchmark
 
 ## Execution steps
 
