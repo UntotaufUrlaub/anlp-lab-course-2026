@@ -19,12 +19,15 @@ def load_json_dataframes(path):
 
     issues_rows = []
     for e in data:
+        repository = e.get("issue_repository", {}).get("nameWithOwner", "")
+        issue_no = e.get("issue_no", "")
         issues_rows.append({
-            "issue_no": e.get("issue_no", ""),
+            "issue_no": issue_no,
+            "issue_key": f"{repository}#{issue_no}",
             "issue_url": e.get("issue_url", ""),
             "issue_title": e.get("issue_title", ""),
             "issue_body": e.get("issue_body", ""),
-            "repository": e.get("issue_repository", {}).get("nameWithOwner", ""),
+            "repository": repository,
             "created_at": e.get("created_at", ""),
             "closed_at": e.get("closed_at", ""),
             "labels": "|".join(
@@ -58,11 +61,15 @@ def load_json_dataframes(path):
 
     links_rows = []
     for e in data:
+        repository = e.get("issue_repository", {}).get("nameWithOwner", "")
+        issue_no = e.get("issue_no", "")
+        issue_key = f"{repository}#{issue_no}"
         for node in e.get("timelineItems", {}).get("nodes", []):
             pr = node.get("pull_info", {})
             if pr:
                 links_rows.append({
                     "issue_url": e.get("issue_url", ""),
+                    "issue_key": issue_key,
                     "pull_url": pr.get("pull_url"),
                 })
     links_df = pd.DataFrame(links_rows)
@@ -166,23 +173,27 @@ def normalise_labels(issues_df):
 
 def construct_issue_links(issues_df, links_df):
     """
-    Returns a DataFrame with columns [issue_no, related_issue_nos] where
-    related_issue_nos is a list of other issues that share at least one PR.
+    Returns a DataFrame with columns [issue_key, issue_no, related_issue_keys]
+    where related_issue_keys is a list of other repo-qualified issues that share
+    at least one PR.
     """
-    url_to_no = issues_df.set_index("issue_url")["issue_no"].to_dict()
+    url_to_key = issues_df.set_index("issue_url")["issue_key"].to_dict()
 
     links = links_df.copy()
-    links["issue_no"] = links["issue_url"].map(url_to_no)
-    pr_to_issue_nos = links.groupby("pull_url")["issue_no"].apply(list)
+    links["issue_key"] = links["issue_url"].map(url_to_key)
+    pr_to_issue_keys = links.groupby("pull_url")["issue_key"].apply(list)
 
-    related_issues = {nr: set() for nr in issues_df["issue_no"]}
-    for issue_no, pull_url in zip(links["issue_no"], links["pull_url"]):
-        for related_no in pr_to_issue_nos[pull_url]:
-            if related_no != issue_no:
-                related_issues[issue_no].add(related_no)
+    related_issues = {key: set() for key in issues_df["issue_key"]}
+    for issue_key, pull_url in zip(links["issue_key"], links["pull_url"]):
+        for related_key in pr_to_issue_keys[pull_url]:
+            if related_key != issue_key:
+                related_issues[issue_key].add(related_key)
 
     result = pd.DataFrame([
-        {"issue_no": issue_no, "related_issue_nos": sorted(related)}
-        for issue_no, related in related_issues.items()
+        {
+            "issue_key": issue_key,
+            "related_issue_keys": sorted(related),
+        }
+        for issue_key, related in related_issues.items()
     ])
     return result
