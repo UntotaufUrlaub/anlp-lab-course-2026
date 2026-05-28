@@ -56,25 +56,32 @@ def make_qrel(query_id, candidate_ids, relation_type):
 # ── GitHub ────────────────────────────────────────────────────────────────────
 
 def process_github(issues_df, linked_df, id_counter, gh_id_map):
-    # Build relation lookup: issue_no -> [related_issue_nos]
+    # Build relation lookup: issue_key -> [related_issue_keys]
     # modified because linked_df already has lists
-    relations = linked_df.set_index("issue_no")["related_issue_nos"].to_dict()
+    relations = linked_df.set_index("issue_key")["related_issue_keys"].to_dict()
+
+    issue_id_map = {}
+    for _, r in issues_df.iterrows():
+        issue_key = str(r["issue_key"])
+        issue_id_map[issue_key] = str(id_counter["count"])
+        id_counter["count"] += 1
+
+    gh_id_map.update(issue_id_map)
 
     docs, qrels = [], []
     for _, r in issues_df.iterrows():
         repo = str(r["repository"])
         issue_no = int(r["issue_no"])
-        id = str(id_counter["count"])
-        id_counter["count"] += 1
-        gh_id_map[issue_no] = id  # Map original issue_no to global ID
+        issue_key = str(r["issue_key"])
+        id = issue_id_map[issue_key]
 
         # Get related issues (pickle preserves list type)
-        related_issues = relations.get(issue_no, [])
+        related_issues = relations.get(issue_key, [])
         if not isinstance(related_issues, list):
             related_issues = []
         
-        # Map original issue numbers to global IDs
-        related = [gh_id_map.get(int(x), str(x)) for x in related_issues]
+        # Map repo-qualified issue keys to global IDs
+        related = [issue_id_map[x] for x in related_issues if x in issue_id_map]
 
         # Parse pipe-separated labels
         label_str = r.get("labels") if isinstance(r.get("labels"), str) else ""
@@ -92,12 +99,11 @@ def process_github(issues_df, linked_df, id_counter, gh_id_map):
             hierarchical=hierarchical_data,
             projects=[repo],
             explicit_related_ids=related,
-            native_id=str(issue_no),
+            native_id=issue_key,
             url=r.get("issue_url"),
         ))
-        # for cid in related:
-        
-        qrels.append(make_qrel(id, related, "linked_issue"))
+        if related:
+            qrels.append(make_qrel(id, related, "linked_issue"))
 
     return docs, qrels
 
