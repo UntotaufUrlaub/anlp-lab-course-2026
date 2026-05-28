@@ -128,14 +128,14 @@ def save_json(path, data):
 
 
 # extracts data with a cache, so if something crashes can continue from previous endpoint
-def data_extraction(corpus_ids_file, batch_size):
+def data_extraction(corpus_ids_file, batch_size=10000):
     with open(corpus_ids_file, "r", encoding="utf-8") as f:
         corpus_ids = json.load(f)
 
     output_dir = "cache"
     os.makedirs(output_dir, exist_ok=True)
 
-    cache_path = os.path.join(output_dir, "missing_paper_cache.json")
+    cache_path = os.path.join(output_dir, "paper_cache.json")
     processed_path = os.path.join(output_dir, "missing_processed_ids.json")
 
     failed_path = os.path.join(output_dir, "failed_ids.json")
@@ -257,6 +257,6 @@ def enrich_document_with_paper_info():
 
 
 if __name__ == "__main__":
-    # get_list_of_corpus_ids()
-    # data_extraction("cache/corpus_ids.json")
+    get_list_of_corpus_ids()
+    data_extraction("cache/corpus_ids.json")
     enrich_document_with_paper_info()
