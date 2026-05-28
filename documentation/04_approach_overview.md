@@ -120,11 +120,11 @@ Pipeline: https://arxiv.org/abs/2406.06572
 - query and query embedding
 - embed documents: e_text = Encoder(description) + e_hier = HierEmbed(label_path)
 - do dense retrieval and select top-k candidates
-- build subgraph
+- build subgraph from selected nodes and already existing offline built graph
 - do n-layer GNN
 - update representations
 - get relevance scores
-- re-rank candidates
+- re-rank candidates, e.g. by distance
 
 -----------------------------------------------------------------------------------------------
 
@@ -132,6 +132,11 @@ Pipeline: https://arxiv.org/abs/2406.06572
 
 5.1 LLM-based metadata extraction
 - FastRAG: https://arxiv.org/abs/2411.13773
+
+- queries an LLM to infer JSON schema and then fill it based on data
+- we already have schema, and would be too expensive
+- maybe instead use an LLM for preprocessing to infer missing categories and create hierarchy,
+  especially in papers dataset since field says Computer Science only (might still be expensive depending on LLM)
 
 
 
