@@ -37,6 +37,8 @@ def load_json_dataframes(path):
             ),
         })
     issues_df = pd.DataFrame(issues_rows)
+    # There are issues which are completely the same
+    issues_df = issues_df.drop_duplicates()
 
     prs_seen = {}
     for e in data:
