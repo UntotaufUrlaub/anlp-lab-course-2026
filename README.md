@@ -90,8 +90,6 @@ better
 python code/baseline_benchmark.py --batch-size 10
 ```
 
-other command flags:
-
 #### other command flags:
 
 | Task                            | Command                                                                                                  |
@@ -109,7 +107,7 @@ other command flags:
 
 Results are written to:
 
-- `code/results/baseline_results.json`
+- `results/baseline_results.json`
 
 ## Notes
 
