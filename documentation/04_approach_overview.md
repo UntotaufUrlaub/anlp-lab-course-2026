@@ -120,7 +120,7 @@ Pipeline: https://arxiv.org/abs/2406.06572
 - query and query embedding
 - embed documents: e_text = Encoder(description) + e_hier = HierEmbed(label_path)
 - do dense retrieval and select top-k candidates
-- build subgraph
+- build subgraph from already existing graph
 - do n-layer GNN
 - update representations
 - get relevance scores
@@ -132,13 +132,16 @@ Pipeline: https://arxiv.org/abs/2406.06572
 
 5.1 LLM-based metadata extraction
 - FastRAG: https://arxiv.org/abs/2411.13773
+    - uses an LLM to create json schema and fill json schema, might be too expensive though
+    - can use an LLM to infer missing entries of our existing json schema, for example hierarchy information
+      in papers dataset or more differentiated fields due to semantic scholar only assigning computer science
 
 5.2 
 - CaseLink paper: https://arxiv.org/pdf/2403.17780
    - predicting links between legal cases
    - builds on the SAGE method
    - 1st establishes node similarity links through NLP means
-   - then refines using GNN and indutive learning
+   - then refines using GNN and inductive learning
 
 
 
