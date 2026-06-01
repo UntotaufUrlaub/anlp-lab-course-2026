@@ -205,13 +205,21 @@ def detect_missing_ids():
 
 
 # --------------------------------- adds info of paper_cache into common schema ------------
+def ensure_paper_cache_exists(cache_path="cache/paper_cache.json"):
+    if not os.path.exists(cache_path):
+        raise FileNotFoundError(
+            f"{cache_path} does not exist. Put paper_cache into the cache folder."
+        )
+
+
 def enrich_document_with_paper_info():
+    ensure_paper_cache_exists()
     i = 0
     with open("cache/paper_cache.json", "r", encoding="utf-8") as f:
         paper_cache = json.load(f)
 
     with open("output/documents.jsonl", "r", encoding="utf-8") as infile, \
-            open("output/documents_enriched_paper.jsonl", "w", encoding="utf-8") as outfile:
+            open("output/documents_enriched_01.jsonl", "w", encoding="utf-8") as outfile:
 
         for line in infile:
             doc = json.loads(line)
@@ -256,7 +264,124 @@ def enrich_document_with_paper_info():
     print(f"modified_entries: {i}")
 
 
+# --------------------------------- add paper to paper queries ------------
+def add_paper_to_paper_queries(
+        documents_input_path="output/documents_enriched_01.jsonl",
+        documents_output_path="output/documents_enriched_02.jsonl",
+        qrels_input_path="output/qrels.jsonl",
+        qrels_output_path="output/qrels_01.jsonl",
+        random_number=200
+):
+    """
+    Adds paper to paper query records.
+
+    For every randomly selected paper with explicit_related_ids, create a new query document:
+    - query text = title + abstract
+    - gold labels = related paper IDs
+    - one qrel row per related paper
+    """
+
+    docs = []
+
+    with open(documents_input_path, "r", encoding="utf-8") as f:
+        for line in f:
+            docs.append(json.loads(line))
+
+    # randomly select a random_amount of paper_docs
+    paper_docs = [
+        doc for doc in docs
+        if doc["source_type"] == "paper"
+           and len(doc["relations"]["explicit_related_ids"]) > 0
+    ]
+
+    selected_papers = random.Random(42).sample(
+        paper_docs,
+        min(random_number, len(paper_docs))
+    )
+    # find the maximum corpus_id
+    max_id = max(int(doc["id"]) for doc in docs if str(doc["id"]).isdigit())  #
+    next_id = max_id + 1
+
+    new_query_docs = []
+    new_qrels = []
+
+    for doc in selected_papers:
+
+        related_ids = doc.get("relations", {}).get("explicit_related_ids", [])
+
+        if not related_ids:
+            continue
+
+        title = doc.get("title") or ""
+        abstract = doc.get("main_text") or ""
+
+        query_text = f"{title}\n\n{abstract}".strip()
+
+        if not query_text:
+            continue
+
+        query_id = str(next_id)
+        next_id += 1
+
+        query_doc = {
+            "id": query_id,
+            "source_dataset": doc.get("source_dataset", "semantic_scholar"),
+            "source_type": "query",
+            "title": title,
+            "main_text": query_text,
+            "secondary_texts": [],
+            "structured_fields": doc.get("structured_fields", {
+                "categorical": {},
+                "multi_label": {},
+                "hierarchical": {}
+            }),
+            "entities": doc.get("entities", {
+                "people": [],
+                "organizations": [],
+                "projects": [],
+                "topics": []
+            }),
+            "relations": {
+                "explicit_related_ids": related_ids
+            },
+            "retrieval_metadata": {
+                "is_queryable": True,
+                "is_candidate": False
+            },
+            "raw_source": {
+                "native_id": doc.get("raw_source", {}).get("native_id"),
+                "url": doc.get("raw_source", {}).get("url")
+            }
+        }
+
+        new_query_docs.append(query_doc)
+        new_qrels.append({
+            "query_id": query_id,
+            "candidate_id": [str(x) for x in related_ids],
+            "relation_type": "citation"
+        })
+
+    with open(documents_output_path, "w", encoding="utf-8") as outfile:
+        for doc in docs + new_query_docs:
+            outfile.write(json.dumps(doc, ensure_ascii=False) + "\n")
+
+    with open(qrels_output_path, "w", encoding="utf-8") as outfile:
+        if os.path.exists(qrels_input_path):
+            with open(qrels_input_path, "r", encoding="utf-8") as infile:
+                for line in infile:
+                    outfile.write(line)
+
+        for qrel in new_qrels:
+            outfile.write(json.dumps(qrel, ensure_ascii=False) + "\n")
+
+    print(f"Eligible paper docs: {len(paper_docs)}")
+    print(f"Selected paper docs: {len(selected_papers)}")
+    print(f"Added {len(new_query_docs)} paper-to-paper query docs")
+    print(f"Added {len(new_qrels)} paper-to-paper qrels")
+    print(f"Wrote documents to {documents_output_path}")
+    print(f"Wrote qrels to {qrels_output_path}")
+
+
 if __name__ == "__main__":
-    get_list_of_corpus_ids()
-    data_extraction("cache/corpus_ids.json")
-    enrich_document_with_paper_info()
+    # enrich_document_with_paper_info()
+    add_paper_to_paper_queries()

@@ -10,6 +10,7 @@ from pathlib import Path
 import sys
 from tqdm import tqdm
 
+
 # ── Core document builder ─────────────────────────────────────────────────────
 
 def make_doc(id, source_dataset, source_type, title, main_text,
@@ -79,7 +80,7 @@ def process_github(issues_df, linked_df, id_counter, gh_id_map):
         related_issues = relations.get(issue_key, [])
         if not isinstance(related_issues, list):
             related_issues = []
-        
+
         # Map repo-qualified issue keys to global IDs
         related = [issue_id_map[x] for x in related_issues if x in issue_id_map]
 
@@ -119,8 +120,10 @@ def process_papers(queries_df, corpus_df, id_counter, paper_id_map):
         id = str(id_counter["count"])
         id_counter["count"] += 1
         paper_id_map[corpusid] = id  # Map original corpusid to global ID
-        
-        cited = [str(x) for x in (r["citations"] if isinstance(r.get("citations"), list) else [])]
+
+        # changed citations slightly because before the cited list was always empty
+        citations = r.get("citations")
+        cited = [] if citations is None else [int(x) for x in citations]
         full = r.get("full_paper")
         docs.append(make_doc(
             id=id,
@@ -186,21 +189,21 @@ def parse_pipe_separated_labels(label_str):
     """
     if not isinstance(label_str, str) or not label_str.strip():
         return {}, {}
-    
+
     labels = label_str.split("|")
     categories = []
     hierarchical = {"all_labels": labels}
-    
+
     for label in labels:
         if ":" in label:
             key, value = label.split(":", 1)
             hierarchical[key.strip()] = value.strip()
         else:
             categories.append(label.strip())
-    
+
     if categories:
         hierarchical["categories"] = categories
-    
+
     return {"labels": [label_str]}, hierarchical
 
 
@@ -217,12 +220,12 @@ def load_or_cache_datasets(use_cache=False, cache_dir="cache"):
     """
     cache_path = Path(cache_dir)
     cache_path.mkdir(exist_ok=True)
-    
+
     issues_cache = cache_path / "issues.pkl"
     linked_cache = cache_path / "issue_links.pkl"
     queries_cache = cache_path / "queries.pkl"
     corpus_cache = cache_path / "corpus.pkl"
-    
+
     # Try loading from cache if requested and all files exist
     if use_cache and all([f.exists() for f in [issues_cache, linked_cache, queries_cache, corpus_cache]]):
         print("\n📦 Loading from cache (pickle)...")
@@ -230,31 +233,32 @@ def load_or_cache_datasets(use_cache=False, cache_dir="cache"):
         issue_links = pd.read_pickle(linked_cache)
         queries_df = pd.read_pickle(queries_cache)
         corpus_df = pd.read_pickle(corpus_cache)
-        print(f"✓ Loaded {len(issues)} issues, {len(issue_links)} links, {len(queries_df)} queries, {len(corpus_df)} papers")
+        print(
+            f"✓ Loaded {len(issues)} issues, {len(issue_links)} links, {len(queries_df)} queries, {len(corpus_df)} papers")
         return issues, issue_links, queries_df, corpus_df
-    
+
     # Download datasets with progress indication
     print("\n📥 Downloading datasets...")
-    
+
     # GitHub issues
     print("  [1/4] Fetching GitHub issues...")
     path = kagglehub.dataset_download("zakareaalshara/android-closed-issues-20110101-20210101-clean")
     (issues, prs, links) = load_json_dataframes(path)
     print(f"      ✓ Loaded {len(issues)} issues")
-    
+
     print("  [2/4] Normalizing labels...")
     issues = normalise_labels(issues)
     issue_links = construct_issue_links(issues, links)
     print(f"      ✓ Constructed {len(issue_links)} links")
-    
+
     print("  [3/4] Fetching papers (queries)...")
     queries_df = load_dataset("princeton-nlp/LitSearch", "query", split="full").to_pandas()
     print(f"      ✓ Loaded {len(queries_df)} queries")
-    
+
     print("  [4/4] Fetching papers (corpus)...")
     corpus_df = load_dataset("princeton-nlp/LitSearch", "corpus_clean", split="full", streaming=True).to_pandas()
     print(f"      ✓ Loaded {len(corpus_df)} papers")
-    
+
     # Cache for next run
     print("\n💾 Caching datasets to pickle...")
     issues.to_pickle(issues_cache)
@@ -262,8 +266,9 @@ def load_or_cache_datasets(use_cache=False, cache_dir="cache"):
     queries_df.to_pickle(queries_cache)
     corpus_df.to_pickle(corpus_cache)
     print("✓ Cache saved. Use --use-cache flag next run for faster loading")
-    
+
     return issues, issue_links, queries_df, corpus_df
+
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
@@ -274,7 +279,7 @@ from json_processing import load_json_dataframes, construct_issue_links, normali
 if __name__ == "__main__":
     # Check for --use-cache flag
     use_cache = "--use-cache" in sys.argv
-    
+
     # Load datasets with caching
     issues_df, linked_df, queries_df, corpus_df = load_or_cache_datasets(use_cache=use_cache)
 
@@ -286,7 +291,7 @@ if __name__ == "__main__":
     print("\n🔄 Processing GitHub issues...")
     gh_docs, gh_qrels = process_github(issues_df, linked_df, id_counter, gh_id_map)
     print(f"✓ Processed {len(gh_docs)} issues and {len(gh_qrels)} qrels")
-    
+
     print("\n🔄 Processing papers...")
     pap_docs, pap_qrels = process_papers(queries_df, corpus_df, id_counter, paper_id_map)
     print(f"✓ Processed {len(pap_docs)} papers/queries and {len(pap_qrels)} qrels")
