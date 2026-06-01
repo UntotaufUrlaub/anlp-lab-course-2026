@@ -383,5 +383,5 @@ def add_paper_to_paper_queries(
 
 
 if __name__ == "__main__":
-    # enrich_document_with_paper_info()
+    enrich_document_with_paper_info()
     add_paper_to_paper_queries()
