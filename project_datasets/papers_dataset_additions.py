@@ -205,15 +205,15 @@ def detect_missing_ids():
 
 
 # --------------------------------- adds info of paper_cache into common schema ------------
-def ensure_paper_cache_exists(cache_path="cache/paper_cache.json"):
-    if not os.path.exists(cache_path):
+def ensure_file_exists(path):
+    if not os.path.exists(path):
         raise FileNotFoundError(
-            f"{cache_path} does not exist. Put paper_cache into the cache folder."
+            f"{path} does not exist."
         )
 
 
 def enrich_document_with_paper_info():
-    ensure_paper_cache_exists()
+    ensure_file_exists("cache/paper_cache.json")
     i = 0
     with open("cache/paper_cache.json", "r", encoding="utf-8") as f:
         paper_cache = json.load(f)
@@ -266,10 +266,10 @@ def enrich_document_with_paper_info():
 
 # --------------------------------- add paper to paper queries ------------
 def add_paper_to_paper_queries(
-        documents_input_path="output/documents_enriched_01.jsonl",
-        documents_output_path="output/documents_enriched_02.jsonl",
-        qrels_input_path="output/qrels.jsonl",
-        qrels_output_path="output/qrels_01.jsonl",
+        documents_input_path,
+        documents_output_path,
+        qrels_input_path,
+        qrels_output_path,
         random_number=200
 ):
     """
@@ -280,7 +280,8 @@ def add_paper_to_paper_queries(
     - gold labels = related paper IDs
     - one qrel row per related paper
     """
-
+    ensure_file_exists(documents_input_path)
+    ensure_file_exists(qrels_input_path)
     docs = []
 
     with open(documents_input_path, "r", encoding="utf-8") as f:
@@ -383,5 +384,10 @@ def add_paper_to_paper_queries(
 
 
 if __name__ == "__main__":
+    input_path = "output/documents_enriched_01.jsonl"
+    output_path = "output/documents_enriched_02.jsonl"
+    qrels_input_path = "output/qrels.jsonl"
+    qrels_output_path = "output/qrels_enriched_02.jsonl"
+
     enrich_document_with_paper_info()
-    add_paper_to_paper_queries()
+    add_paper_to_paper_queries(input_path, output_path, qrels_input_path, qrels_output_path)
