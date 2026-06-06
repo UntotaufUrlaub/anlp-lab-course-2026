@@ -56,14 +56,14 @@ A virtual environment e.g. MyVenv with `python -m venv MyVenv`
 
 # Benchmark Pipeline
 
-This repository contains the benchmark pipeline for dataset acquisition, alignment, and baseline retrieval evaluation.
+This repository contains the benchmark pipeline for dataset acquisition, alignment, and retrieval evaluation.
 
 ## Core pipeline files
 
 - `project_datasets/data_set_alignment.py` — download, normalize, align, and export documents/qrels
 - `project_datasets/json_processing.py` — process raw GitHub issue JSON and normalize labels
-- `code/baseline_benchmark.py` — run baseline retrieval benchmarks on the aligned dataset
-- `code/methods.py` — baseline method implementations used by the benchmark
+- `code/benchmark.py` — run retrieval benchmarks on the aligned dataset
+- `code/methods.py` — retrieval method implementations used by the benchmark
 - `code/validate_benchmark.py` — verify data files, benchmark script, and environment
 - `code/benchmark_requirements.txt` — benchmark dependencies
 - `project_datasets/requirements.txt` — dataset preparation dependencies
@@ -120,40 +120,40 @@ Use `python project_datasets/data_set_alignment.py --use-cache` to reuse cached 
 python code/validate_benchmark.py
 ```
 
-### 5) Run the baseline benchmark (takes very... long)
+### 5) Run the retrieval benchmark (takes very... long)
 
 ```bash
-python code/baseline_benchmark.py
+python code/benchmark.py
 ```
 
 better
 
 ```bash
-python code/baseline_benchmark.py --batch-size 10
+python code/benchmark.py --batch-size 10
 ```
 
 #### other command flags:
 
-| Task                            | Command                                                                                                  |
-| ------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| Run with defaults (all queries) | `python code/baseline_benchmark.py`                                                                      |
-| Quick test (10 random queries)  | `python code/baseline_benchmark.py --batch-size 10`                                                      |
-| Medium batch (50 queries)       | `python code/baseline_benchmark.py --batch-size 50`                                                      |
-| Test with different seed        | `python code/baseline_benchmark.py --batch-size 10 --seed 123`                                           |
-| Change embedding model          | `python code/baseline_benchmark.py --embedding-model all-mpnet-base-v2`                                  |
-| Custom k-values                 | `python code/baseline_benchmark.py --k-values 5 20 100`                                                  |
-| Use specialized paper model     | `python code/baseline_benchmark.py --embedding-model allenai/specter2`                                   |
-| Full custom command             | `python code/baseline_benchmark.py --batch-size 20 --embedding-model all-mpnet-base-v2 --k-values 10 50` |
+| Task                            | Command                                                                                         |
+| ------------------------------- | ----------------------------------------------------------------------------------------------- |
+| Run with defaults (all queries) | `python code/benchmark.py`                                                                      |
+| Quick test (10 random queries)  | `python code/benchmark.py --batch-size 10`                                                      |
+| Medium batch (50 queries)       | `python code/benchmark.py --batch-size 50`                                                      |
+| Test with different seed        | `python code/benchmark.py --batch-size 10 --seed 123`                                           |
+| Change embedding model          | `python code/benchmark.py --embedding-model all-mpnet-base-v2`                                  |
+| Custom k-values                 | `python code/benchmark.py --k-values 5 20 100`                                                  |
+| Use specialized paper model     | `python code/benchmark.py --embedding-model allenai/specter2`                                   |
+| Full custom command             | `python code/benchmark.py --batch-size 20 --embedding-model all-mpnet-base-v2 --k-values 10 50` |
 
 ### 6) View benchmark results
 
 Results are written to:
 
-- `results/baseline_results.json`
+- `results/method_results.json`
 
 ## Notes
 
-- `project_datasets/data_set_alignment.py` must run before `code/baseline_benchmark.py` because the benchmark reads the aligned dataset files.
+- `project_datasets/data_set_alignment.py` must run before `code/benchmark.py` because the benchmark reads the aligned dataset files.
 - If the dataset download step fails, verify that `kagglehub`, `datasets`, `pandas`, and `tqdm` are installed and that Kaggle credentials are configured.
 
 ## Quick Start Summary
@@ -162,7 +162,7 @@ Results are written to:
 2. Install dataset and benchmark dependencies.
 3. Run `python project_datasets/data_set_alignment.py`.
 4. Run `python code/validate_benchmark.py`.
-5. Run `python code/baseline_benchmark.py`.
-6. Check results in `results/baseline_results.json`.
+5. Run `python code/benchmark.py`.
+6. Check results in `results/method_results.json`.
 
 TODO: Check paper dataset add what is going wrong on my end

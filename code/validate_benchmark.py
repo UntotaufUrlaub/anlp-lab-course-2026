@@ -97,14 +97,14 @@ def check_script():
     print("CHECKING BENCHMARK SCRIPT")
     print("="*60)
     
-    script_path = Path("code/baseline_benchmark.py")
+    script_path = Path("code/benchmark.py")
     issues = []
     
     if script_path.exists():
-        print(f"✅ baseline_benchmark.py found")
+        print(f"✅ benchmark.py found")
     else:
-        print(f"❌ baseline_benchmark.py not found at {script_path}")
-        issues.append("Missing baseline_benchmark.py")
+        print(f"❌ benchmark.py not found at {script_path}")
+        issues.append("Missing benchmark.py")
     
     return issues
 
@@ -115,7 +115,7 @@ def check_output_directory():
     print("CHECKING OUTPUT DIRECTORY")
     print("="*60)
     
-    output_dir = Path("code/results")
+    output_dir = Path("results")
     issues = []
     
     if output_dir.exists():
@@ -134,7 +134,7 @@ def check_output_directory():
 def main():
     print("\n")
     print("╔" + "="*58 + "╗")
-    print("║" + " BASELINE BENCHMARK - VALIDATION SCRIPT ".center(58) + "║")
+    print("║" + " BENCHMARK VALIDATION SCRIPT ".center(58) + "║")
     print("╚" + "="*58 + "╝")
     
     all_issues = []
@@ -153,10 +153,7 @@ def main():
     if not all_issues:
         print("\n✅ ALL CHECKS PASSED!")
         print("\nYou can now run the benchmark:")
-        print("  python code/baseline_benchmark.py")
-        print("\nOr use the quick start script:")
-        print("  run_baseline_benchmark.bat  (Windows)")
-        print("  ./run_baseline_benchmark.sh (Linux/Mac)")
+        print("  python code/benchmark.py")
         return 0
     else:
         print(f"\n❌ FOUND {len(all_issues)} ISSUE(S):")

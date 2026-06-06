@@ -1,4 +1,4 @@
-"""Retrieval method implementations for the baseline benchmark.
+"""Retrieval method implementations for the benchmark suite.
 
 This module defines the base method contract and current retrieval methods.
 """
@@ -56,7 +56,7 @@ class BaseMethod(ABC):
 
 
 class BM25Baseline(BaseMethod):
-    """BM25 lexical retrieval baseline."""
+    """BM25 lexical retrieval method."""
 
     def __init__(self):
         self.bm25 = None
@@ -85,11 +85,12 @@ class BM25Baseline(BaseMethod):
 
 
 class DenseEmbeddingBaseline(BaseMethod):
-    """Dense embedding retrieval using Sentence Transformers."""
+    """Dense embedding retrieval method using Sentence Transformers."""
 
-    def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
+    def __init__(self, model_name: str = 'all-MiniLM-L6-v2'):
         logger.info(f"Loading Sentence Transformer model: {model_name}")
         self.model = SentenceTransformer(model_name)
+        logger.info(f"Sentence Transformer model loaded: {model_name}")
         self.embeddings = []
         self.doc_ids = []
 

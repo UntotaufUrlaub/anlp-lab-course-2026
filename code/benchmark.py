@@ -1,7 +1,7 @@
 """
-Baseline Benchmarking Script for Semi-Structured Information Retrieval
+Benchmarking Script for Semi-Structured Retrieval
 
-This script evaluates two baseline methods:
+This script evaluates retrieval methods:
 1. BM25 (lexical/sparse retrieval)
 2. Sentence Transformers (dense embeddings)
 
@@ -12,7 +12,6 @@ Metrics computed:
 - Precision@k
 - MRR (Mean Reciprocal Rank)
 """
-
 import json
 import numpy as np
 from pathlib import Path
@@ -191,7 +190,7 @@ def evaluate(
 # ---------------------------------------------------------------------------
 
 class BenchmarkRunner:
-    """Run benchmarks on baseline methods."""
+    """Run benchmarks on retrieval methods."""
     
     def __init__(self, documents: Dict, qrels: Dict, k_values: List[int] = [5, 10, 100]):
         self.documents = documents
@@ -199,26 +198,26 @@ class BenchmarkRunner:
         self.k_values = k_values
         self.results = {}
     
-    def run_baseline(self, baseline_name: str, baseline: BaseMethod) -> Dict:
+    def run_method(self, method_name: str, method: BaseMethod) -> Dict:
         """
-        Run a single baseline on all queries.
+        Run a single method on all queries.
         
         Args:
-        - baseline_name: Name of the baseline
-        - baseline: Baseline object with retrieve() method
+        - method_name: Name of the method
+        - method: Retrieval method object with retrieve() method
         
         Returns:
         - Dictionary with aggregated metrics
         """
         logger.info(f"\n{'='*60}")
-        logger.info(f"Running {baseline_name}...")
+        logger.info(f"Running {method_name}...")
         logger.info(f"{'='*60}")
         
         query_metrics = []
         query_details = []
         debug_count = 0
         
-        for query_id, ground_truth in tqdm(self.qrels.items(), desc=baseline_name):
+        for query_id, ground_truth in tqdm(self.qrels.items(), desc=method_name):
             # Get query document
             if query_id not in self.documents:
                 logger.warning(f"Query {query_id} not found in documents")
@@ -231,7 +230,7 @@ class BenchmarkRunner:
             # Use max of k_values or 100 to ensure we get enough results
             retrieve_top_k = max(self.k_values) if self.k_values else 100
             retrieve_top_k = max(retrieve_top_k, 100)
-            results = baseline.retrieve(query_text, top_k=retrieve_top_k)
+            results = method.retrieve(query_text, top_k=retrieve_top_k)
             rankings = [doc_id for doc_id, _ in results if doc_id != query_id]
             
             relevant_count = len(ground_truth)
@@ -259,7 +258,7 @@ class BenchmarkRunner:
         # Aggregate metrics
         aggregated = self._aggregate_metrics(query_metrics)
         aggregated["query_details"] = query_details
-        self.results[baseline_name] = aggregated
+        self.results[method_name] = aggregated
         
         return aggregated
     
@@ -280,11 +279,11 @@ class BenchmarkRunner:
     def print_results(self):
         """Print formatted results."""
         print("\n" + "="*80)
-        print("BASELINE BENCHMARK RESULTS")
+        print("BENCHMARK RESULTS")
         print("="*80 + "\n")
         
-        for baseline_name, metrics in self.results.items():
-            print(f"\n{baseline_name}")
+        for method_name, metrics in self.results.items():
+            print(f"\n{method_name}")
             print("-" * 80)
             
             # Group by metric type
@@ -325,13 +324,25 @@ class BenchmarkRunner:
         logger.info(f"Results saved to {output_path}")
 
 
+METHOD_REGISTRY = {
+    "bm25": {
+        "builder": lambda args: BM25Baseline(),
+        "label": "BM25",
+    },
+    "dense": {
+        "builder": lambda args: DenseEmbeddingBaseline(model_name=args.embedding_model),
+        "label": "DenseEmbedding (Sentence Transformers)",
+    },
+}
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Baseline Benchmarking Script"
+        description="Benchmarking Script for Semi-Structured Retrieval"
     )
     parser.add_argument(
         "--docs-path",
@@ -345,7 +356,7 @@ def main():
     )
     parser.add_argument(
         "--output-path",
-        default="results/baseline_results.json",
+        default="results/method_results.json",
         help="Path to save results"
     )
     parser.add_argument(
@@ -372,6 +383,13 @@ def main():
         default=42,
         help="Random seed for reproducible batch sampling (default: 42)"
     )
+    parser.add_argument(
+        "--methods",
+        nargs="+",
+        default=list(METHOD_REGISTRY.keys()),
+        choices=list(METHOD_REGISTRY.keys()),
+        help=f"Retrieval methods to run. Available: {', '.join(METHOD_REGISTRY.keys())}"
+    )
     
     args = parser.parse_args()
     
@@ -389,15 +407,11 @@ def main():
     # Initialize benchmark runner
     runner = BenchmarkRunner(documents, qrels, k_values=args.k_values)
     
-    # Run BM25 baseline
-    bm25_baseline = BM25Baseline()
-    bm25_baseline.build_index(documents, include_labels=True)
-    runner.run_baseline("BM25", bm25_baseline)
-    
-    # Run Dense Embedding baseline
-    # dense_baseline = DenseEmbeddingBaseline(model_name=args.embedding_model)
-    # dense_baseline.build_index(documents, include_labels=True)
-    # runner.run_baseline("DenseEmbedding (Sentence Transformers)", dense_baseline)
+    for method_key in args.methods:
+        method_config = METHOD_REGISTRY[method_key]
+        method = method_config["builder"](args)
+        method.build_index(documents, include_labels=True)
+        runner.run_method(method_config["label"], method)
     
     # Print and save results
     runner.print_results()
