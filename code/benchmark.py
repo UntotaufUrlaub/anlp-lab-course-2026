@@ -90,6 +90,32 @@ def load_documents_and_qrels(
             raise ValueError("Unsupported qrel format: expected 'candidate_ids' or 'candidate_id'.")
 
     qrels = {qid: set(cids) for qid, cids in qrels.items()}
+
+    # Remove qrels that reference missing documents.
+    if documents:
+        available_doc_ids = set(documents.keys())
+        filtered_qrels = {}
+        missing_queries = 0
+        missing_candidates = 0
+
+        for qid, cids in qrels.items():
+            if qid not in available_doc_ids:
+                missing_queries += 1
+                continue
+
+            filtered_candidates = {cid for cid in cids if cid in available_doc_ids}
+            if filtered_candidates:
+                filtered_qrels[qid] = filtered_candidates
+            else:
+                missing_candidates += 1
+
+        if missing_queries or missing_candidates:
+            logger.warning(
+                f"Filtered qrels: {missing_queries} queries missing from documents, "
+                f"{missing_candidates} queries had no valid candidates"
+            )
+        qrels = filtered_qrels
+
     logger.info(f"Loaded {len(qrels)} queries with hard ground truth candidates")
     
     # Sample batch if batch_size is specified
@@ -102,6 +128,89 @@ def load_documents_and_qrels(
         logger.info(f"Sampled {len(qrels)} queries (batch_size={batch_size}, seed={random_seed})")
 
     return documents, qrels
+
+
+def sample_documents(
+    documents: Dict,
+    qrels: Dict[str, Set[int]],
+    sample_size: int,
+    random_seed: int = 42
+) -> Tuple[Dict, Dict[str, Set[int]]]:
+    """Sample documents while preserving at least some query/qrel pairs."""
+    if sample_size is None or sample_size <= 0:
+        return documents, qrels
+
+    random.seed(random_seed)
+    doc_ids = list(documents.keys())
+    available_doc_ids = set(doc_ids)
+    sample_size = min(sample_size, len(doc_ids))
+
+    if not qrels:
+        sampled_doc_ids = set(random.sample(doc_ids, sample_size))
+        sampled_documents = {doc_id: documents[doc_id] for doc_id in sampled_doc_ids}
+        logger.info(
+            f"Sampled {len(sampled_documents)} documents (no qrels available)"
+        )
+        return sampled_documents, qrels
+
+    # Sample by query groups so qrels stay meaningful.
+    query_ids = [qid for qid in qrels.keys() if qid in available_doc_ids]
+    random.shuffle(query_ids)
+
+    sampled_doc_ids = set()
+    sampled_qrels = {}
+
+    for query_id in query_ids:
+        candidate_ids = {cid for cid in qrels[query_id] if cid in available_doc_ids}
+        if not candidate_ids:
+            continue
+
+        group_ids = {query_id} | candidate_ids
+
+        if len(sampled_doc_ids) + len(group_ids - sampled_doc_ids) > sample_size:
+            # Stop before we exceed the requested sample budget.
+            break
+
+        sampled_doc_ids.update(group_ids)
+        sampled_qrels[query_id] = candidate_ids
+
+    if not sampled_qrels:
+        # If nothing could be sampled within the requested budget, keep one valid query group.
+        valid_query_id = None
+        for query_id in query_ids:
+            candidate_ids = {cid for cid in qrels[query_id] if cid in available_doc_ids}
+            if candidate_ids:
+                valid_query_id = query_id
+                break
+
+        if valid_query_id is not None:
+            candidate_ids = {cid for cid in qrels[valid_query_id] if cid in available_doc_ids}
+            sampled_doc_ids = {valid_query_id} | candidate_ids
+            sampled_qrels = {valid_query_id: candidate_ids}
+            logger.warning(
+                "Requested sample_size too small to preserve qrels; "
+                "sampling one valid query group instead."
+            )
+        else:
+            logger.warning(
+                "No valid qrels remain after filtering against document IDs; "
+                "falling back to random document sampling."
+            )
+            sampled_doc_ids = set(random.sample(doc_ids, sample_size))
+
+    if len(sampled_doc_ids) < sample_size:
+        remaining_ids = [doc_id for doc_id in doc_ids if doc_id not in sampled_doc_ids]
+        extra_count = min(sample_size - len(sampled_doc_ids), len(remaining_ids))
+        if extra_count > 0:
+            sampled_doc_ids.update(random.sample(remaining_ids, extra_count))
+
+    sampled_documents = {doc_id: documents[doc_id] for doc_id in sampled_doc_ids}
+    logger.info(
+        f"Sampled {len(sampled_documents)} documents and preserved {len(sampled_qrels)} qrels"
+    )
+
+    return sampled_documents, sampled_qrels
+
 
 # ---------------------------------------------------------------------------
 # Evaluation Metrics
@@ -192,11 +301,12 @@ def evaluate(
 class BenchmarkRunner:
     """Run benchmarks on retrieval methods."""
     
-    def __init__(self, documents: Dict, qrels: Dict, k_values: List[int] = [5, 10, 100]):
+    def __init__(self, documents: Dict, qrels: Dict, k_values: List[int] = [5, 10, 100], debug: bool = False):
         self.documents = documents
         self.qrels = qrels
         self.k_values = k_values
         self.results = {}
+        self.debug = debug
     
     def run_method(self, method_name: str, method: BaseMethod) -> Dict:
         """
@@ -237,7 +347,8 @@ class BenchmarkRunner:
             matched_relevant = sum(1 for doc_id in rankings if doc_id in ground_truth)
 
             # Debug: print first few queries
-            if debug_count < 2:
+            max_debug_queries = 5 if self.debug else 2
+            if debug_count < max_debug_queries:
                 logger.info(f"  Query {query_id}: {len(rankings)} retrieved, {relevant_count} total relevant, {matched_relevant} matched")
                 if len(rankings) > 0:
                     logger.info(f"    Top retrieved: {rankings[:5]}")
@@ -295,7 +406,7 @@ class BenchmarkRunner:
                 metric_types[base_metric][metric_name] = value
             
             for metric_type in sorted(metric_types.keys()):
-                if metric_type == "query_details":
+                if metric_type == "query":
                     continue
                 print(f"\n  {metric_type.upper()}:")
                 for stat_name in sorted(metric_types[metric_type].keys()):
@@ -372,6 +483,17 @@ def main():
         help="K values for metrics (e.g., --k-values 5 10 100)"
     )
     parser.add_argument(
+        "--sample-size",
+        type=int,
+        default=None,
+        help="Approximate number of documents to sample for a smaller index; preserves sampled query/qrel groups when possible"
+    )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Enable debug mode for a smaller sampled pipeline and additional logging"
+    )
+    parser.add_argument(
         "--batch-size",
         type=int,
         default=None,
@@ -381,7 +503,7 @@ def main():
         "--seed",
         type=int,
         default=42,
-        help="Random seed for reproducible batch sampling (default: 42)"
+        help="Random seed for reproducible sampling (default: 42)"
     )
     parser.add_argument(
         "--methods",
@@ -396,6 +518,14 @@ def main():
     # Create output directory
     Path(args.output_path).parent.mkdir(parents=True, exist_ok=True)
     
+    # Enable debug logging when requested
+    if args.debug:
+        logger.setLevel(logging.DEBUG)
+        logger.info("Debug mode enabled")
+        if args.sample_size is None:
+            args.sample_size = 500
+            logger.info("No sample size provided; using sample_size=500 for debug checks")
+    
     # Load data
     documents, qrels = load_documents_and_qrels(
         args.docs_path,
@@ -403,9 +533,12 @@ def main():
         batch_size=args.batch_size,
         random_seed=args.seed
     )
+
+    if args.sample_size is not None:
+        documents, qrels = sample_documents(documents, qrels, args.sample_size, random_seed=args.seed)
     
     # Initialize benchmark runner
-    runner = BenchmarkRunner(documents, qrels, k_values=args.k_values)
+    runner = BenchmarkRunner(documents, qrels, k_values=args.k_values, debug=args.debug)
     
     for method_key in args.methods:
         method_config = METHOD_REGISTRY[method_key]

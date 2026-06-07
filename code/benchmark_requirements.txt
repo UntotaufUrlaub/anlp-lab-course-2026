@@ -1,7 +1,0 @@
-# Baseline Benchmarking Requirements
-
-rank-bm25>=0.2.1
-sentence-transformers>=2.7.0
-numpy>=1.24.0
-tqdm>=4.60.0
-scikit-learn>=1.3.0
