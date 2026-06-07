@@ -1,4 +1,4 @@
-"""Retrieval method implementations for the baseline benchmark.
+r"""Retrieval method implementations for the baseline benchmark.
 
 This module defines the base method contract and current retrieval methods.
 """

@@ -389,5 +389,5 @@ if __name__ == "__main__":
     qrels_input_path = "output/qrels.jsonl"
     qrels_output_path = "output/qrels_enriched_02.jsonl"
 
-    enrich_document_with_paper_info()
-    add_paper_to_paper_queries(input_path, output_path, qrels_input_path, qrels_output_path)
+    # enrich_document_with_paper_info()
+    # add_paper_to_paper_queries(input_path, output_path, qrels_input_path, qrels_output_path)

@@ -54,10 +54,10 @@ def load_jsonl(file_path: str) -> List[Dict]:
 
 
 def load_documents_and_qrels(
-    docs_path: str,
-    qrels_path: str,
-    batch_size: int = None,
-    random_seed: int = 42
+        docs_path: str,
+        qrels_path: str,
+        batch_size: int = None,
+        random_seed: int = 42
 ) -> Tuple[Dict, Dict[str, Set[int]]]:
     """
     Load documents and qrels, organize by dataset.
@@ -92,7 +92,7 @@ def load_documents_and_qrels(
 
     qrels = {qid: set(cids) for qid, cids in qrels.items()}
     logger.info(f"Loaded {len(qrels)} queries with hard ground truth candidates")
-    
+
     # Sample batch if batch_size is specified
     if batch_size is not None and batch_size > 0:
         random.seed(random_seed)
@@ -103,6 +103,7 @@ def load_documents_and_qrels(
         logger.info(f"Sampled {len(qrels)} queries (batch_size={batch_size}, seed={random_seed})")
 
     return documents, qrels
+
 
 # ---------------------------------------------------------------------------
 # Evaluation Metrics
@@ -167,23 +168,22 @@ def mrr(rankings: List[int], ground_truth: Set[int]) -> float:
 
 
 def evaluate(
-    rankings: List[int],
-    ground_truth: Set[int],
-    k_values: List[int] = [5, 10, 100]
+        rankings: List[int],
+        ground_truth: Set[int],
+        k_values: List[int] = [5, 10, 100]
 ) -> Dict[str, float]:
     """
     Compute all metrics for a single query.
     """
     metrics = {"mrr": mrr(rankings, ground_truth)}
-    
+
     for k in k_values:
         metrics[f"ndcg@{k}"] = ndcg_at_k(rankings, ground_truth, k)
         metrics[f"map@{k}"] = map_at_k(rankings, ground_truth, k)
         metrics[f"recall@{k}"] = recall_at_k(rankings, ground_truth, k)
         metrics[f"precision@{k}"] = precision_at_k(rankings, ground_truth, k)
-    
-    return metrics
 
+    return metrics
 
 
 # ---------------------------------------------------------------------------
@@ -192,13 +192,13 @@ def evaluate(
 
 class BenchmarkRunner:
     """Run benchmarks on baseline methods."""
-    
+
     def __init__(self, documents: Dict, qrels: Dict, k_values: List[int] = [5, 10, 100]):
         self.documents = documents
         self.qrels = qrels
         self.k_values = k_values
         self.results = {}
-    
+
     def run_baseline(self, baseline_name: str, baseline: BaseMethod) -> Dict:
         """
         Run a single baseline on all queries.
@@ -210,40 +210,41 @@ class BenchmarkRunner:
         Returns:
         - Dictionary with aggregated metrics
         """
-        logger.info(f"\n{'='*60}")
+        logger.info(f"\n{'=' * 60}")
         logger.info(f"Running {baseline_name}...")
-        logger.info(f"{'='*60}")
-        
+        logger.info(f"{'=' * 60}")
+
         query_metrics = []
         query_details = []
         debug_count = 0
-        
+
         for query_id, ground_truth in tqdm(self.qrels.items(), desc=baseline_name):
             # Get query document
             if query_id not in self.documents:
                 logger.warning(f"Query {query_id} not found in documents")
                 continue
-            
+
             query_doc = self.documents[query_id]
             query_text = prepare_text(query_doc, include_title=True, include_labels=False)
-            
+
             # Retrieve results (exclude query itself)
             # Use max of k_values or 100 to ensure we get enough results
             retrieve_top_k = max(self.k_values) if self.k_values else 100
             retrieve_top_k = max(retrieve_top_k, 100)
             results = baseline.retrieve(query_text, top_k=retrieve_top_k)
             rankings = [doc_id for doc_id, _ in results if doc_id != query_id]
-            
+
             relevant_count = len(ground_truth)
             matched_relevant = sum(1 for doc_id in rankings if doc_id in ground_truth)
 
             # Debug: print first few queries
             if debug_count < 2:
-                logger.info(f"  Query {query_id}: {len(rankings)} retrieved, {relevant_count} total relevant, {matched_relevant} matched")
+                logger.info(
+                    f"  Query {query_id}: {len(rankings)} retrieved, {relevant_count} total relevant, {matched_relevant} matched")
                 if len(rankings) > 0:
                     logger.info(f"    Top retrieved: {rankings[:5]}")
                 debug_count += 1
-            
+
             # Capture query-level summary
             query_details.append({
                 "query_id": query_id,
@@ -255,38 +256,38 @@ class BenchmarkRunner:
             # Compute metrics
             metrics = evaluate(rankings, ground_truth, self.k_values)
             query_metrics.append(metrics)
-        
+
         # Aggregate metrics
         aggregated = self._aggregate_metrics(query_metrics)
         aggregated["query_details"] = query_details
         self.results[baseline_name] = aggregated
-        
+
         return aggregated
-    
+
     def _aggregate_metrics(self, query_metrics: List[Dict]) -> Dict:
         """Aggregate metrics across all queries."""
         if not query_metrics:
             return {}
-        
+
         aggregated = {}
         for metric_name in query_metrics[0].keys():
             values = [m[metric_name] for m in query_metrics]
             aggregated[f"{metric_name}_mean"] = np.mean(values)
             aggregated[f"{metric_name}_std"] = np.std(values)
             aggregated[f"{metric_name}_median"] = np.median(values)
-        
+
         return aggregated
-    
+
     def print_results(self):
         """Print formatted results."""
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("BASELINE BENCHMARK RESULTS")
-        print("="*80 + "\n")
-        
+        print("=" * 80 + "\n")
+
         for baseline_name, metrics in self.results.items():
             print(f"\n{baseline_name}")
             print("-" * 80)
-            
+
             # Group by metric type
             metric_types = {}
             for metric_name, value in metrics.items():
@@ -294,7 +295,7 @@ class BenchmarkRunner:
                 if base_metric not in metric_types:
                     metric_types[base_metric] = {}
                 metric_types[base_metric][metric_name] = value
-            
+
             for metric_type in sorted(metric_types.keys()):
                 if metric_type == "query_details":
                     continue
@@ -315,9 +316,9 @@ class BenchmarkRunner:
                     )
                 if len(metrics["query_details"]) > 5:
                     print(f"    ...and {len(metrics['query_details']) - 5} more queries")
-        
-        print("\n" + "="*80)
-    
+
+        print("\n" + "=" * 80)
+
     def save_results(self, output_path: str):
         """Save results to JSON file."""
         with open(output_path, 'w') as f:
@@ -372,12 +373,12 @@ def main():
         default=42,
         help="Random seed for reproducible batch sampling (default: 42)"
     )
-    
+
     args = parser.parse_args()
-    
+
     # Create output directory
     Path(args.output_path).parent.mkdir(parents=True, exist_ok=True)
-    
+
     # Load data
     documents, qrels = load_documents_and_qrels(
         args.docs_path,
@@ -385,24 +386,24 @@ def main():
         batch_size=args.batch_size,
         random_seed=args.seed
     )
-    
+
     # Initialize benchmark runner
     runner = BenchmarkRunner(documents, qrels, k_values=args.k_values)
-    
+
     # Run BM25 baseline
     bm25_baseline = BM25Baseline()
     bm25_baseline.build_index(documents, include_labels=True)
     runner.run_baseline("BM25", bm25_baseline)
-    
+
     # Run Dense Embedding baseline
     # dense_baseline = DenseEmbeddingBaseline(model_name=args.embedding_model)
     # dense_baseline.build_index(documents, include_labels=True)
     # runner.run_baseline("DenseEmbedding (Sentence Transformers)", dense_baseline)
-    
+
     # Print and save results
     runner.print_results()
     runner.save_results(args.output_path)
-    
+
     logger.info("\nBenchmark complete!")
 
 
