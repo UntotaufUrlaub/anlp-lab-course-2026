@@ -9,17 +9,18 @@ from typing import Dict, List, Tuple
 
 import numpy as np
 
-try:
-    from rank_bm25 import BM25Okapi
-    from sentence_transformers import SentenceTransformer
-except ImportError:
-    import subprocess
+# try:
+from rank_bm25 import BM25Okapi
+from sentence_transformers import SentenceTransformer
 
-    subprocess.check_call(
-        ["pip", "install", "rank-bm25", "sentence-transformers", "scikit-learn"]
-    )
-    from rank_bm25 import BM25Okapi
-    from sentence_transformers import SentenceTransformer
+# except ImportError:
+# import subprocess
+
+# subprocess.check_call(
+#     ["pip", "install", "rank-bm25", "sentence-transformers", "scikit-learn"]
+# )
+# from rank_bm25 import BM25Okapi
+# from sentence_transformers import SentenceTransformer
 
 logger = logging.getLogger(__name__)
 
@@ -33,9 +34,6 @@ def prepare_text(
     if include_title and doc.get("title"):
         text_parts.append(doc["title"])
 
-    if doc.get("main_text"):
-        text_parts.append(doc["main_text"])
-
     if include_labels:
         structured = doc.get("structured_fields", {})
         multi_label = structured.get("multi_label", {})
@@ -45,10 +43,10 @@ def prepare_text(
             else:
                 text_parts.append(str(values))
 
+    if doc.get("main_text"):
+        text_parts.append(doc["main_text"])
+
     return " ".join(text_parts)
-
-
-# TODO hierarchical data wehen available
 
 
 class BaseMethod(ABC):
@@ -129,120 +127,97 @@ class DenseEmbeddingBaseline(BaseMethod):
         return [(self.doc_ids[i], float(similarities[i])) for i in top_k_indices]
 
 
+# TODO hierarchical data wehen available somehow
 class MetadataAwareMethod(BaseMethod):
-    """Metadata-aware retrieval that combines BM25 text scores with metadata matching.
+    """Metadata-aware retrieval with weighted field aggregation and optional two-stage reranking."""
 
-    Usage:
-      - During `build_index`, the method collects BM25 tokenized corpus and a simple
-        metadata set per document composed from `structured_fields` and `entities`.
-      - At `retrieve` time, pass an optional `metadata` dict (e.g. `{"labels": ["bug"]}`)
-        to boost documents that match the provided metadata values.
+    def __init__(
+        self,
+        model_name: str = "all-MiniLM-L6-v2",
+        metadata_boost: float = 2.0,
+        first_stage_k: int = None,
+    ):
+        self.model = SentenceTransformer(model_name)
+        self.metadata_boost = metadata_boost
+        self.first_stage_k = first_stage_k
 
-    This is intended for cases where hierarchical fields are not available yet but
-    categorical/multi-label metadata exists.
-    """
-
-    def __init__(self, metadata_boost: float = 2.0):
-        self.bm25 = None
-        self.corpus = []
         self.doc_ids = []
-        self.doc_metadata_sets = []
-        self.metadata_boost = float(metadata_boost)
+        self.agg_embeddings = None  # (N, D) for first-stage
+        self.field_embeddings = {}  # {field: (N, D)} for reranking
 
-    def _build_metadata_set(self, doc: Dict) -> set:
-        s = set()
-        structured = doc.get("structured_fields", {})
-        categorical = (
-            structured.get("categorical", {}) if isinstance(structured, dict) else {}
-        )
-        multi_label = (
-            structured.get("multi_label", {}) if isinstance(structured, dict) else {}
-        )
+    def _extract_fields(self, doc: Dict) -> Dict[str, str]:
+        """Return ordered fields: metadata → title → main_text."""
+        structured = doc.get("structured_fields", {}) or {}
+        multi_label = structured.get("multi_label", {})
 
-        for k, v in categorical.items():
-            if v is None:
-                continue
-            s.add(str(v).lower())
+        metadata = multi_label.get("labels") or multi_label.get("fields_of_study") or []
 
-        for k, values in multi_label.items():
-            if isinstance(values, list):
-                for vv in values:
-                    s.add(str(vv).lower())
-            else:
-                s.add(str(values).lower())
+        return {
+            "metadata": (
+                " ".join(metadata) if isinstance(metadata, list) else str(metadata)
+            ),
+            "title": doc.get("title") or "",
+            "main_text": doc.get("main_text") or "",
+        }
 
-        entities = doc.get("entities", {}) or {}
-        for k, values in entities.items():
-            if isinstance(values, list):
-                for vv in values:
-                    s.add(str(vv).lower())
-            else:
-                s.add(str(values).lower())
+    def _encode(self, texts: List[str]) -> np.ndarray:
+        return self.model.encode(texts, convert_to_numpy=True, show_progress_bar=False)
 
-        # also include raw_source fields if present (provenance)
-        raw = doc.get("raw_source", {}) or {}
-        for k, v in raw.items():
-            if v is None:
-                continue
-            if isinstance(v, list):
-                for vv in v:
-                    s.add(str(vv).lower())
-            else:
-                s.add(str(v).lower())
+    def build_index(self, documents: Dict, **kwargs) -> None:
+        self.doc_ids = list(documents.keys())
+        all_fields = [self._extract_fields(doc) for doc in documents.values()]
 
-        return s
+        field_weights = {
+            "metadata": self.metadata_boost,
+            "title": 2.0,
+            "main_text": 1.0,
+        }
 
-    def build_index(self, documents: Dict, include_labels: bool = False) -> None:
-        logger.info("Building Metadata-aware BM25 index...")
-        self.corpus = []
-        self.doc_ids = []
-        self.doc_metadata_sets = []
+        # Encode each field as a batch
+        for field in field_weights:
+            texts = [f[field] for f in all_fields]
+            self.field_embeddings[field] = self._encode(texts)  # (N, D)
 
-        for doc_id, doc in documents.items():
-            text = prepare_text(doc, include_title=True, include_labels=include_labels)
-            tokens = text.lower().split()
-            self.corpus.append(tokens)
-            self.doc_ids.append(doc_id)
-            self.doc_metadata_sets.append(self._build_metadata_set(doc))
-
-        self.bm25 = BM25Okapi(self.corpus)
-        logger.info(
-            f"Metadata-aware BM25 index built with {len(self.corpus)} documents"
-        )
+        # Aggregated embedding: weighted average over fields
+        total_weight = sum(field_weights.values())
+        self.agg_embeddings = (
+            sum(w * self.field_embeddings[f] for f, w in field_weights.items())
+            / total_weight
+        )  # (N, D)
 
     def retrieve(
-        self, query: str, top_k: int = 5, metadata: Dict = None
+        self, query: str, top_k: int = 10, **kwargs
     ) -> List[Tuple[str, float]]:
-        # BM25 text scores
-        query_tokens = query.lower().split()
-        text_scores = self.bm25.get_scores(query_tokens)
+        q = self._encode([query])[0]  # (D,)
 
-        # normalize text scores to [0,1]
-        max_score = float(np.max(text_scores)) if len(text_scores) > 0 else 1.0
-        if max_score <= 0:
-            max_score = 1.0
-        text_scores_norm = text_scores / max_score
+        def cosine(matrix, vec):
+            return (
+                matrix
+                @ vec
+                / (np.linalg.norm(matrix, axis=1) * np.linalg.norm(vec) + 1e-10)
+            )
 
-        # compute metadata match scores
-        metadata_score = np.zeros_like(text_scores_norm)
-        if metadata:
-            # collect query metadata values as a set of lowercased strings
-            query_values = set()
-            for k, v in (metadata.items() if isinstance(metadata, dict) else []):
-                if isinstance(v, list):
-                    for vv in v:
-                        query_values.add(str(vv).lower())
-                else:
-                    query_values.add(str(v).lower())
+        # Stage 1: shortlist via aggregated embeddings
+        k1 = self.first_stage_k or len(self.doc_ids)
+        scores = cosine(self.agg_embeddings, q)
+        shortlist = np.argsort(scores)[-k1:][::-1]
 
-            if len(query_values) > 0:
-                for i, meta_set in enumerate(self.doc_metadata_sets):
-                    if not meta_set:
-                        continue
-                    # simple match fraction
-                    matches = len(meta_set.intersection(query_values))
-                    metadata_score[i] = matches / float(len(query_values))
+        # Stage 2: rerank by max field similarity over shortlist
+        if self.first_stage_k:
+            field_scores = np.stack(
+                [
+                    cosine(self.field_embeddings[f][shortlist], q)
+                    for f in self.field_embeddings
+                ],
+                axis=1,
+            ).max(
+                axis=1
+            )  # (k1,)
+            order = np.argsort(field_scores)[-top_k:][::-1]
+            shortlist = shortlist[order]
+            scores = field_scores[order]
+        else:
+            scores = scores[shortlist[:top_k]]
+            shortlist = shortlist[:top_k]
 
-        combined = text_scores_norm + (self.metadata_boost * metadata_score)
-        top_k_indices = np.argsort(combined)[-top_k:][::-1]
-        return [(self.doc_ids[i], float(combined[i])) for i in top_k_indices]
+        return [(self.doc_ids[i], float(s)) for i, s in zip(shortlist, scores)]
