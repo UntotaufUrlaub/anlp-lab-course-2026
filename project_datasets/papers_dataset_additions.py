@@ -277,6 +277,7 @@ def enrich_document_with_hierarchy_info(input_document_path_for_enrichment):
 
 
 
+
 # --------------------------------- add paper to paper queries ------------
 def add_paper_to_paper_queries(
     documents_input_path,
