@@ -36,8 +36,8 @@ def prepare_text(
 
     if include_labels:
         structured = doc.get("structured_fields", {})
-        multi_label = structured.get("multi_label", {})
-        for key, values in multi_label.items():
+        categorical = structured.get("categorical", {})
+        for key, values in categorical.items():
             if isinstance(values, list):
                 text_parts.append(" ".join(values))
             else:
@@ -148,9 +148,9 @@ class MetadataAwareMethod(BaseMethod):
     def _extract_fields(self, doc: Dict) -> Dict[str, str]:
         """Return ordered fields: metadata → title → main_text."""
         structured = doc.get("structured_fields", {}) or {}
-        multi_label = structured.get("multi_label", {})
+        categorical = structured.get("categorical", {})
 
-        metadata = multi_label or multi_label.get("fields_of_study") or []
+        metadata = categorical or categorical.get("fields_of_study") or []
 
         return {
             "metadata": (
