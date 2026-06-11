@@ -267,23 +267,9 @@ def enrich_document_with_paper_info():
 
 # --------------------------------- adds queried hierarchy info into common schema ------------
 def enrich_document_with_hierarchy_info(input_document_path_for_enrichment):
+    pass
 
-    ensure_file_exists(input_document_path_for_enrichment)
 
-    model_id = "LiquidAI/LFM2.5-350M"
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"Using device: {device}")
-
-    model = AutoModelForCausalLM.from_pretrained(
-        model_id,
-        torch_dtype=torch.float16
-    )
-
-    model = model.to(device)
-
-    with open(input_document_path_for_enrichment, "r", encoding="utf-8") as f:
-        for line in f:
-            doc = json.loads(line)
 
 
 

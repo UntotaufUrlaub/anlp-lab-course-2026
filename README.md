@@ -55,6 +55,41 @@ Creating query records for all of them would generate tens of thousands of addit
 potentially hundreds of thousands of qrel entries.
 A fixed random seed (Random(42)) is used.
 
+### 03: Hierarchy Data
+
+documents_enriched_02.jsonl
+→ documents_enriched_03.jsonl
+
+Hierarchical information is added by querying an LLM that can be run on the local
+machine.
+The hierarchy information which is added is split into the following categories:
+```
+{
+  "hierarchical": {
+    "affiliations": [
+        ["country_or_region", "affiliation_type", "organization"]
+    ],
+    "field_of_study_path": [
+      "broad_domain",
+      "field",
+      "subfield",
+    ],
+    "topic_path": [
+      "general_research_area",
+      "topic_family",
+      "specific_topic",
+    ],
+    "method_path": [
+      "method_family",
+      "method_category",
+      "specific_method",
+    ]
+  }
+}
+```
+Remarks:
+- Since there are several affiliations per paper, affiliations contains a list of lists of hierarchy.
+
 ## Requirements
 
 Python 3.12.0
