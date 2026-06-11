@@ -27,13 +27,17 @@ def send_api_request(url, query_params):
             # print(json.dumps(data, indent=2))
             return data
         else:
-            raise Exception(f"Request failed:{r.status_code}: {r.text}")  # can also change to return None instead
+            raise Exception(
+                f"Request failed:{r.status_code}: {r.text}"
+            )  # can also change to return None instead
 
 
 # extracts all corpus_ids and puts them in separate cache file for calling later, has to be run first
 def get_list_of_corpus_ids():
     corpus_ids = []
-    corpus_clean_data = load_dataset("princeton-nlp/LitSearch", "corpus_clean", split="full", streaming=True)
+    corpus_clean_data = load_dataset(
+        "princeton-nlp/LitSearch", "corpus_clean", split="full", streaming=True
+    )
 
     for i, paper in enumerate(corpus_clean_data):
         corpus_ids.append(paper["corpusid"])
@@ -60,11 +64,7 @@ def post_with_backoff(url, *, params, json_payload, headers, max_retries=6):
 
     for attempt in range(max_retries):
         response = requests.post(
-            url,
-            params=params,
-            json=json_payload,
-            headers=headers,
-            timeout=30
+            url, params=params, json=json_payload, headers=headers, timeout=30
         )
 
         if response.status_code == 200:
@@ -72,7 +72,9 @@ def post_with_backoff(url, *, params, json_payload, headers, max_retries=6):
 
         if response.status_code in {429, 500, 502, 503, 504}:
             wait = delay + random.uniform(0, 0.5)
-            print(f"Retry {attempt + 1}: status {response.status_code}, waiting {wait:.1f}s")
+            print(
+                f"Retry {attempt + 1}: status {response.status_code}, waiting {wait:.1f}s"
+            )
             time.sleep(wait)
             delay *= 2
             continue
@@ -89,29 +91,20 @@ def get_paper_batch(paper_url, paper_ids):
 
     params = {
         "fields": "corpusId,publicationVenue,fieldsOfStudy,publicationTypes,journal,authors,authors.name,"
-                  "authors.affiliations"
+        "authors.affiliations"
     }
 
-    payload = {
-        "ids": [f"CorpusId:{cid}" for cid in paper_ids]
-    }
+    payload = {"ids": [f"CorpusId:{cid}" for cid in paper_ids]}
 
-    headers = {
-        "x-api-key": API_KEY
-    }
+    headers = {"x-api-key": API_KEY}
 
-    return post_with_backoff(
-        url,
-        params=params,
-        json_payload=payload,
-        headers=headers
-    )
+    return post_with_backoff(url, params=params, json_payload=payload, headers=headers)
 
 
 # out of the whole corpus_ids file create queryable chunks
 def chunks(items, batch_size):
     for i in range(0, len(items), batch_size):
-        yield items[i:i + batch_size]
+        yield items[i : i + batch_size]
 
 
 def load_json_if_exists(path, default):
@@ -155,8 +148,7 @@ def data_extraction(corpus_ids_file, batch_size=10000):
             continue
         try:
             papers = get_paper_batch(
-                "https://api.semanticscholar.org/graph/v1/paper/batch",
-                batch
+                "https://api.semanticscholar.org/graph/v1/paper/batch", batch
             )
         except requests.exceptions.HTTPError as e:
             print("Failed batch:", batch[:10])
@@ -207,9 +199,7 @@ def detect_missing_ids():
 # --------------------------------- adds info of paper_cache into common schema ------------
 def ensure_file_exists(path):
     if not os.path.exists(path):
-        raise FileNotFoundError(
-            f"{path} does not exist."
-        )
+        raise FileNotFoundError(f"{path} does not exist.")
 
 
 def enrich_document_with_paper_info():
@@ -218,15 +208,16 @@ def enrich_document_with_paper_info():
     with open("cache/paper_cache.json", "r", encoding="utf-8") as f:
         paper_cache = json.load(f)
 
-    with open("output/documents.jsonl", "r", encoding="utf-8") as infile, \
-            open("output/documents_enriched_01.jsonl", "w", encoding="utf-8") as outfile:
+    with open("output/documents.jsonl", "r", encoding="utf-8") as infile, open(
+        "output/documents_enriched_01.jsonl", "w", encoding="utf-8"
+    ) as outfile:
 
         for line in infile:
             doc = json.loads(line)
 
             if (
-                    doc["source_type"] == "paper"
-                    and doc["raw_source"]["native_id"] is not None
+                doc["source_type"] == "paper"
+                and doc["raw_source"]["native_id"] is not None
             ):
 
                 corpus_id = str(doc["raw_source"]["native_id"])
@@ -244,21 +235,34 @@ def enrich_document_with_paper_info():
                         if author.get("name")
                     ]
 
-                    doc["entities"]["organizations"] = list({
-                        affiliation
-                        for author in metadata.get("authors", [])
-                        for affiliation in author.get("affiliations", [])
-                    })
+                    doc["entities"]["organizations"] = list(
+                        {
+                            affiliation
+                            for author in metadata.get("authors", [])
+                            for affiliation in author.get("affiliations", [])
+                        }
+                    )
 
                     doc["entities"]["topics"] = metadata.get("fieldsOfStudy") or []
 
-                    doc["structured_fields"]["categorical"]["venue_name"] = venue.get("name")
-                    doc["structured_fields"]["categorical"]["venue_type"] = venue.get("type")
-                    doc["structured_fields"]["categorical"]["journal"] = journal.get("name")
-                    doc["structured_fields"]["categorical"]["journal_volume"] = journal.get("volume")
-                    doc["structured_fields"]["multi_label"]["fields_of_study"] = metadata.get("fieldsOfStudy") or []
-                    doc["structured_fields"]["multi_label"]["publication_types"] = metadata.get(
-                        "publicationTypes") or []
+                    doc["structured_fields"]["categorical"]["venue_name"] = venue.get(
+                        "name"
+                    )
+                    doc["structured_fields"]["categorical"]["venue_type"] = venue.get(
+                        "type"
+                    )
+                    doc["structured_fields"]["categorical"]["journal"] = journal.get(
+                        "name"
+                    )
+                    doc["structured_fields"]["categorical"]["journal_volume"] = (
+                        journal.get("volume")
+                    )
+                    doc["structured_fields"]["categorical"]["fields_of_study"] = (
+                        metadata.get("fieldsOfStudy") or []
+                    )
+                    doc["structured_fields"]["categorical"]["publication_types"] = (
+                        metadata.get("publicationTypes") or []
+                    )
 
             outfile.write(json.dumps(doc, ensure_ascii=False) + "\n")
     print(f"modified_entries: {i}")
@@ -266,11 +270,11 @@ def enrich_document_with_paper_info():
 
 # --------------------------------- add paper to paper queries ------------
 def add_paper_to_paper_queries(
-        documents_input_path,
-        documents_output_path,
-        qrels_input_path,
-        qrels_output_path,
-        random_number=200
+    documents_input_path,
+    documents_output_path,
+    qrels_input_path,
+    qrels_output_path,
+    random_number=200,
 ):
     """
     Adds paper to paper query records.
@@ -290,14 +294,14 @@ def add_paper_to_paper_queries(
 
     # randomly select a random_amount of paper_docs
     paper_docs = [
-        doc for doc in docs
+        doc
+        for doc in docs
         if doc["source_type"] == "paper"
-           and len(doc["relations"]["explicit_related_ids"]) > 0
+        and len(doc["relations"]["explicit_related_ids"]) > 0
     ]
 
     selected_papers = random.Random(42).sample(
-        paper_docs,
-        min(random_number, len(paper_docs))
+        paper_docs, min(random_number, len(paper_docs))
     )
     # find the maximum corpus_id
     max_id = max(int(doc["id"]) for doc in docs if str(doc["id"]).isdigit())  #
@@ -331,36 +335,29 @@ def add_paper_to_paper_queries(
             "title": title,
             "main_text": query_text,
             "secondary_texts": [],
-            "structured_fields": doc.get("structured_fields", {
-                "categorical": {},
-                "multi_label": {},
-                "hierarchical": {}
-            }),
-            "entities": doc.get("entities", {
-                "people": [],
-                "organizations": [],
-                "projects": [],
-                "topics": []
-            }),
-            "relations": {
-                "explicit_related_ids": related_ids
-            },
-            "retrieval_metadata": {
-                "is_queryable": True,
-                "is_candidate": False
-            },
+            "structured_fields": doc.get(
+                "structured_fields", {"categorical": {}, "hierarchical": {}}
+            ),
+            "entities": doc.get(
+                "entities",
+                {"people": [], "organizations": [], "projects": [], "topics": []},
+            ),
+            "relations": {"explicit_related_ids": related_ids},
+            "retrieval_metadata": {"is_queryable": True, "is_candidate": False},
             "raw_source": {
                 "native_id": doc.get("raw_source", {}).get("native_id"),
-                "url": doc.get("raw_source", {}).get("url")
-            }
+                "url": doc.get("raw_source", {}).get("url"),
+            },
         }
 
         new_query_docs.append(query_doc)
-        new_qrels.append({
-            "query_id": query_id,
-            "candidate_id": [str(x) for x in related_ids],
-            "relation_type": "citation"
-        })
+        new_qrels.append(
+            {
+                "query_id": query_id,
+                "candidate_id": [str(x) for x in related_ids],
+                "relation_type": "citation",
+            }
+        )
 
     with open(documents_output_path, "w", encoding="utf-8") as outfile:
         for doc in docs + new_query_docs:

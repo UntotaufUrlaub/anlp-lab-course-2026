@@ -21,7 +21,6 @@ def make_doc(
     main_text,
     secondary_texts=None,
     categorical=None,
-    multi_label=None,
     hierarchical=None,
     people=None,
     organizations=None,
@@ -42,7 +41,6 @@ def make_doc(
         "secondary_texts": secondary_texts or [],
         "structured_fields": {
             "categorical": categorical or {},
-            "multi_label": multi_label or {},
             "hierarchical": hierarchical or {},
         },
         "entities": {
@@ -109,8 +107,7 @@ def process_github(issues_df, linked_df, id_counter, gh_id_map):
                 title=r.get("issue_title"),
                 main_text=r.get("issue_body") or "",
                 secondary_texts=comments,
-                categorical=[],
-                multi_label=label_str,
+                categorical=label_str,
                 hierarchical=[],
                 projects=[repo],
                 explicit_related_ids=related,

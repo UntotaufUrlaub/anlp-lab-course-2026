@@ -70,9 +70,6 @@ Each dataset item is stored in a common document format.
     "categorical": {
       "field_name": "string"
     },
-    "multi_label": {
-      "field_name": ["string"]
-    },
     "hierarchical": {
       "field_name": ["level_1", "level_2", "level_3"]
     }
@@ -179,19 +176,7 @@ Examples:
 
 ### `structured_fields.categorical`
 
-Flat single-value categorical metadata.
-
-Examples:
-
-- `status`: `open` / `closed` (derived from `closed_at` being null for GitHub)
-- `specificity`: from query metadata in papers dataset
-- `quality`: from query metadata in papers dataset
-
----
-
-### `structured_fields.multi_label`
-
-Fields with multiple labels that do not form a strict hierarchy.
+Fields with possible multiple categories that do not form a strict hierarchy.
 
 Examples:
 
@@ -306,7 +291,6 @@ Fields:
 | `main_text`                            | `issue_body`                             |                                               |
 | `secondary_texts`                      | `comments`                               | list of comment strings                       |
 | `structured_fields.categorical.status` | derived                                  | `open` / `closed` from `closed_at` null check |
-| `structured_fields.multi_label.labels` | `labels`                                 |                                               |
 | `structured_fields.hierarchical`       | —                                        | empty `{}` for now                            |
 | `entities.people`                      | —                                        | empty for now; assignees derivable later      |
 | `entities.organizations`               | —                                        | empty for now                                 |
@@ -329,7 +313,6 @@ Fields:
 | `main_text`                       | `abstract`    |                                             |
 | `secondary_texts`                 | `full_paper`  | wrap in list: `[full_paper]`                |
 | `structured_fields.categorical`   | —             | empty `{}` for now                          |
-| `structured_fields.multi_label`   | —             | empty `{}` for now                          |
 | `structured_fields.hierarchical`  | —             | empty `{}` for now                          |
 | `entities.people`                 | —             | empty for now; authors derivable later      |
 | `entities.organizations`          | —             | empty for now; affiliations derivable later |
@@ -379,8 +362,7 @@ Fields:
     "Comment 2: Related to file path handling."
   ],
   "structured_fields": {
-    "categorical": { "status": "closed" },
-    "multi_label": { "labels": ["bug", "scheduler"] },
+    "categorical": { "labels": ["bug", "scheduler"] },
     "hierarchical": {}
   },
   "entities": {
@@ -414,8 +396,7 @@ Fields:
   "main_text": "We study retrieval over datasets containing both text and structured hierarchical metadata ...",
   "secondary_texts": ["Full paper text here ..."],
   "structured_fields": {
-    "categorical": {"venue_name": None, "venue_type": None, "journal": None, "journal_volume": None},
-    "multi_label": {"fields_of_study": [], "publication_types":[]},
+    "categorical": {"venue_name": None, "venue_type": None, "journal": None, "journal_volume": None, "fields_of_study": [], "publication_types":[]},
     "hierarchical": {}
   },
   "entities": {
@@ -453,7 +434,6 @@ Fields:
       "specificity": "high",
       "quality": "good"
     },
-    "multi_label": {},
     "hierarchical": {}
   },
   "entities": {
