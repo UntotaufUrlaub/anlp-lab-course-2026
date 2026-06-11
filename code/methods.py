@@ -83,10 +83,10 @@ class BM25Baseline(BaseMethod):
         self.bm25 = BM25Okapi(self.corpus)
         logger.info(f"BM25 index built with {len(self.corpus)} documents")
 
-    def retrieve(self, query: str, top_k: int = 5) -> List[Tuple[str, float]]:
+    def retrieve(self, query: str, top_k: int = 10) -> List[Tuple[str, float]]:
         query_tokens = query.lower().split()
         scores = self.bm25.get_scores(query_tokens)
-        top_k_indices = np.argsort(scores)[-top_k:][::-1]
+        top_k_indices = np.argsort(scores)[-(top_k + 1) :][::-1]
         return [(self.doc_ids[i], float(scores[i])) for i in top_k_indices]
 
 
@@ -118,12 +118,12 @@ class DenseEmbeddingBaseline(BaseMethod):
         )
         logger.info(f"Embedding index built with {len(self.embeddings)} documents")
 
-    def retrieve(self, query: str, top_k: int = 100) -> List[Tuple[str, float]]:
+    def retrieve(self, query: str, top_k: int = 10) -> List[Tuple[str, float]]:
         query_embedding = self.model.encode(query, convert_to_numpy=True)
         similarities = np.dot(self.embeddings, query_embedding) / (
             np.linalg.norm(self.embeddings, axis=1) * np.linalg.norm(query_embedding)
         )
-        top_k_indices = np.argsort(similarities)[-top_k:][::-1]
+        top_k_indices = np.argsort(similarities)[-(top_k + 1) :][::-1]
         return [(self.doc_ids[i], float(similarities[i])) for i in top_k_indices]
 
 
@@ -197,7 +197,8 @@ class MetadataAwareMethod(BaseMethod):
                 / (np.linalg.norm(matrix, axis=1) * np.linalg.norm(vec) + 1e-10)
             )
 
-        # Stage 1: shortlist via aggregated embeddings; first_stage_k always None? -> len(self.doc_ids) no shortlisting TODO
+        top_k += 1
+        # Stage 1: shortlist via aggregated embeddings
         k1 = self.first_stage_k or len(self.doc_ids)
         scores = cosine(self.agg_embeddings, q)
         shortlist = np.argsort(scores)[-k1:][::-1]
