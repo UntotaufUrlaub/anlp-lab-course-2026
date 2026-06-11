@@ -36,8 +36,8 @@ def prepare_text(
 
     if include_labels:
         structured = doc.get("structured_fields", {})
-        multi_label = structured.get("multi_label", {})
-        for key, values in multi_label.items():
+        categorical = structured.get("categorical", {})
+        for key, values in categorical.items():
             if isinstance(values, list):
                 text_parts.append(" ".join(values))
             else:
@@ -83,10 +83,10 @@ class BM25Baseline(BaseMethod):
         self.bm25 = BM25Okapi(self.corpus)
         logger.info(f"BM25 index built with {len(self.corpus)} documents")
 
-    def retrieve(self, query: str, top_k: int = 5) -> List[Tuple[str, float]]:
+    def retrieve(self, query: str, top_k: int = 10) -> List[Tuple[str, float]]:
         query_tokens = query.lower().split()
         scores = self.bm25.get_scores(query_tokens)
-        top_k_indices = np.argsort(scores)[-top_k:][::-1]
+        top_k_indices = np.argsort(scores)[-(top_k + 1) :][::-1]
         return [(self.doc_ids[i], float(scores[i])) for i in top_k_indices]
 
 
@@ -118,16 +118,16 @@ class DenseEmbeddingBaseline(BaseMethod):
         )
         logger.info(f"Embedding index built with {len(self.embeddings)} documents")
 
-    def retrieve(self, query: str, top_k: int = 100) -> List[Tuple[str, float]]:
+    def retrieve(self, query: str, top_k: int = 10) -> List[Tuple[str, float]]:
         query_embedding = self.model.encode(query, convert_to_numpy=True)
         similarities = np.dot(self.embeddings, query_embedding) / (
             np.linalg.norm(self.embeddings, axis=1) * np.linalg.norm(query_embedding)
         )
-        top_k_indices = np.argsort(similarities)[-top_k:][::-1]
+        top_k_indices = np.argsort(similarities)[-(top_k + 1) :][::-1]
         return [(self.doc_ids[i], float(similarities[i])) for i in top_k_indices]
 
 
-# TODO hierarchical data wehen available somehow
+# TODO hierarchical data wehen real available somehow
 class MetadataAwareMethod(BaseMethod):
     """Metadata-aware retrieval with weighted field aggregation and optional two-stage reranking."""
 
@@ -148,9 +148,9 @@ class MetadataAwareMethod(BaseMethod):
     def _extract_fields(self, doc: Dict) -> Dict[str, str]:
         """Return ordered fields: metadata → title → main_text."""
         structured = doc.get("structured_fields", {}) or {}
-        multi_label = structured.get("multi_label", {})
+        categorical = structured.get("categorical", {})
 
-        metadata = multi_label.get("labels") or multi_label.get("fields_of_study") or []
+        metadata = categorical or categorical.get("fields_of_study") or []
 
         return {
             "metadata": (
@@ -197,6 +197,7 @@ class MetadataAwareMethod(BaseMethod):
                 / (np.linalg.norm(matrix, axis=1) * np.linalg.norm(vec) + 1e-10)
             )
 
+        top_k += 1
         # Stage 1: shortlist via aggregated embeddings
         k1 = self.first_stage_k or len(self.doc_ids)
         scores = cosine(self.agg_embeddings, q)

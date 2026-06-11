@@ -71,8 +71,6 @@ class BenchmarkRunner:
             structured = query_doc.get("structured_fields", {})
             if isinstance(structured, dict):
                 query_metadata = {}
-                if "multi_label" in structured:
-                    query_metadata["multi_label"] = structured.get("multi_label")
                 if "categorical" in structured:
                     query_metadata["categorical"] = structured.get("categorical")
 
