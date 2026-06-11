@@ -127,7 +127,7 @@ class DenseEmbeddingBaseline(BaseMethod):
         return [(self.doc_ids[i], float(similarities[i])) for i in top_k_indices]
 
 
-# TODO hierarchical data wehen available somehow
+# TODO hierarchical data wehen real available somehow
 class MetadataAwareMethod(BaseMethod):
     """Metadata-aware retrieval with weighted field aggregation and optional two-stage reranking."""
 
@@ -150,7 +150,7 @@ class MetadataAwareMethod(BaseMethod):
         structured = doc.get("structured_fields", {}) or {}
         multi_label = structured.get("multi_label", {})
 
-        metadata = multi_label.get("labels") or multi_label.get("fields_of_study") or []
+        metadata = multi_label or multi_label.get("fields_of_study") or []
 
         return {
             "metadata": (
@@ -197,7 +197,7 @@ class MetadataAwareMethod(BaseMethod):
                 / (np.linalg.norm(matrix, axis=1) * np.linalg.norm(vec) + 1e-10)
             )
 
-        # Stage 1: shortlist via aggregated embeddings
+        # Stage 1: shortlist via aggregated embeddings; first_stage_k always None? -> len(self.doc_ids) no shortlisting TODO
         k1 = self.first_stage_k or len(self.doc_ids)
         scores = cosine(self.agg_embeddings, q)
         shortlist = np.argsort(scores)[-k1:][::-1]
