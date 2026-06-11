@@ -241,7 +241,7 @@ BASELINE_METHODS = {
 EXPERIMENTAL_METHODS = {
     "metadata_aware": {
         "builder": lambda args: MetadataAwareMethod(
-            metadata_boost=getattr(args, "metadata_boost", 2.0)
+            metadata_boost=getattr(args, "metadata_boost", 2.0), first_stage_k=100
         ),
         "label": "MetadataAware",
     },
