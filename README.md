@@ -67,7 +67,7 @@ The hierarchy information which is added is split into the following categories:
 {
   "hierarchical": {
     "affiliations": [
-        ["country_or_region", "affiliation_type", "organization"]
+        ["country_or_region", "sector", "organization", "sub-unit/lab"]
     ],
     "field_of_study_path": [
       "broad_domain",
