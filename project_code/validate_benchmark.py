@@ -153,7 +153,7 @@ def main():
     if not all_issues:
         print("\n✅ ALL CHECKS PASSED!")
         print("\nYou can now run the benchmark:")
-        print("  python code/benchmark.py")
+        print("  python project_code/benchmark.py")
         return 0
     else:
         print(f"\n❌ FOUND {len(all_issues)} ISSUE(S):")

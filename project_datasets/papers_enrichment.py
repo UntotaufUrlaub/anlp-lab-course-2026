@@ -1,6 +1,7 @@
 import json
 import os
 import random
+import time
 
 def ensure_file_exists(path):
     if not os.path.exists(path):
@@ -149,6 +150,8 @@ def make_paper_to_paper_query_enricher(random_number=200, seed=42):
 
 def run_document_enrichment(input_path, output_path, enrichers):
     ensure_file_exists(input_path)
+    if len(enrichers)==0:
+        raise ValueError("Cannot enrich when nothing given.")
 
     with open(input_path, "r", encoding="utf-8") as infile, open(
         output_path, "w", encoding="utf-8"
@@ -168,6 +171,8 @@ def run_dataset_addition(documents_input_path,
                          enrichers):
     ensure_file_exists(documents_input_path)
     ensure_file_exists(qrels_input_path)
+    if len(enrichers)==0:
+        raise ValueError("Cannot enrich when nothing given.")
 
     docs = read_jsonl(documents_input_path)
     qrels = read_jsonl(qrels_input_path)
@@ -180,13 +185,20 @@ def run_dataset_addition(documents_input_path,
 
 
 if __name__ == "__main__":
+    # select the enrichers you would like
     info_enrichers = [make_paper_metadata_enricher("cache/paper_cache.json")]
     dataset_enrichers=[make_paper_to_paper_query_enricher(200,42)]
 
-    run_document_enrichment("output/documents.jsonl", "output/documents_enriched.jsonl",
+    start = time.time()
+    print(f"Enriching document with metadata information...")
+
+    run_document_enrichment("output/documents.jsonl", "output/documents_enriched_01.jsonl",
                             info_enrichers)
-    run_dataset_addition("output/documents_enriched.jsonl",
-                         "output/documents_enriched_with_paper_to_paper.jsonl",
+    print(f"\nAdding paper to paper queries to the main document and the qrels...")
+
+    run_dataset_addition("output/documents_enriched_01.jsonl",
+                         "output/documents_enriched_02.jsonl",
                          "output/qrels.jsonl",
-                         "output/qrels_enriched_with_paper_to_paper.jsonl",
+                         "output/qrels_enriched_02.jsonl",
                          dataset_enrichers)
+    print("✅ Done!")

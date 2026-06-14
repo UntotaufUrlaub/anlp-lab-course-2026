@@ -29,13 +29,13 @@ try:
     from utils import parse_args
     from benchmarkRunner import BenchmarkRunner
 except ImportError:
-    from code.methods import (
+    from project_code.methods import (
         BM25Baseline,
         DenseEmbeddingBaseline,
         MetadataAwareMethod,
     )
-    from code.utils import parse_args
-    from code.benchmarkRunner import BenchmarkRunner
+    from project_code.utils import parse_args
+    from project_code.benchmarkRunner import BenchmarkRunner
 
 # ---------------------------------------------------------------------------
 # Logging
