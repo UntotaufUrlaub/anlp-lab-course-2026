@@ -649,8 +649,20 @@ def load_submitted_batch_ids(manifest_path):
     with open(manifest_path, "r", encoding="utf-8") as f:
         manifest = json.load(f)
 
+    valid_statuses = {
+        "validating",
+        "in_progress",
+        "finalizing",
+        "completed",
+    }
+
     # go through each batch and add all paper_ids of each batch to get the set of already submitted ids
     for batch in manifest.get("batches", []):
+        status = batch.get("status")
+
+        if status not in valid_statuses:
+            continue
+
         submitted_ids.update(str(paper_id) for paper_id in batch.get("paper_ids", []))
 
     return submitted_ids
@@ -1005,6 +1017,23 @@ def inspect_failed_batch(batch_id):
 
     print("\nFull batch object:")
     print(batch.model_dump_json(indent=4))
+
+def remove_failed_batches_from_manifest(manifest_path):
+    manifest = load_json_if_exists(manifest_path, {"batches": []})
+
+    before = len(manifest["batches"])
+
+    manifest["batches"] = [
+        batch for batch in manifest["batches"]
+        if batch.get("status") != "failed"
+    ]
+
+    after = len(manifest["batches"])
+
+    save_json(manifest_path, manifest)
+
+    print(f"Removed failed batches: {before - after}")
+    print(f"Remaining batches: {after}")
 #--------------------------main program-----------------------------------------------------------------
 if __name__ == "__main__":
     # choose the batch size with wich semantic scholar responds
@@ -1021,4 +1050,4 @@ if __name__ == "__main__":
     #     output_cache_path="cache/hierarchy_cache_nano_4.json",
     # )
     # run_batch_submission_nicely(request_batch_size=1000)
-    refresh_batch_manifest('cache/openai_hierarchy_batches/batch_manifest.json')
+    remove_failed_batches_from_manifest("cache/openai_hierarchy_batches/batch_manifest.json")
