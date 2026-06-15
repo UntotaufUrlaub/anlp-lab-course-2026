@@ -8,6 +8,7 @@ import random
 from openai import OpenAI
 import tiktoken
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from collections import Counter
 
 
 #--------------------------calls the Semantic Scholar API to gather paper information--------------------------
@@ -431,7 +432,7 @@ def estimate_avg_input_output_tokens(
 
     return result, pretty_print_token_report(result)
 
-def run_cost_estimation(model, number_of_queries, MAX_BUDGET):
+def run_cost_estimation(model, number_of_queries, MAX_BUDGET, using_batch_api=False):
     print("Calculating average input and output tokens ...")
     token_info, token_report = estimate_avg_input_output_tokens(model, 1000)
     print("\nCalculating costs...")
@@ -442,6 +443,9 @@ def run_cost_estimation(model, number_of_queries, MAX_BUDGET):
     print(cost_report)
 
     total_cost = cost_info['total_cost']
+    if using_batch_api:
+        total_cost = total_cost/2
+        print(f"😄 Due to batch api, total cost is halved, so it only costs: {total_cost}")
     if total_cost > MAX_BUDGET:
         raise ValueError( f"❌ Estimated cost ${total_cost:} exceeds budget.")
     else:
@@ -608,6 +612,7 @@ def hierarchy_information_extraction_parallel(
 
 #--------------------------calling OpenAI Batch API for hierarchy information in batches------------------------
 
+# build one request with all the info
 def build_hierarchy_batch_request(doc, model):
     paper_id, title, abstract, authors, affiliations, fields_of_study = extract_paper_fields(doc)
 
@@ -636,30 +641,36 @@ def build_hierarchy_batch_request(doc, model):
 def load_submitted_batch_ids(manifest_path):
     submitted_ids = set()
 
+    # if the manifest does not exist yet, return an empty set
     if not os.path.exists(manifest_path):
         return submitted_ids
 
+    # if the manifest already exists we load the document
     with open(manifest_path, "r", encoding="utf-8") as f:
         manifest = json.load(f)
 
+    # go through each batch and add all paper_ids of each batch to get the set of already submitted ids
     for batch in manifest.get("batches", []):
         submitted_ids.update(str(paper_id) for paper_id in batch.get("paper_ids", []))
 
     return submitted_ids
 
-
+# append the batch_info dictionary to the manifest.json object
 def append_batch_manifest(manifest_path, batch_info):
+    # loads the manifest json file if it exists
     manifest = load_json_if_exists(manifest_path, {"batches": []})
+    # appends the batch_info under batches
     manifest["batches"].append(batch_info)
+    # saves the json file
     save_json(manifest_path, manifest)
 
-
+# writes a jsonl file with the information in requests
 def write_openai_batch_input_file(requests, path):
     with open(path, "w", encoding="utf-8") as f:
         for request in requests:
             f.write(json.dumps(request, ensure_ascii=False) + "\n")
 
-
+# submits batch to OpenAI
 def submit_openai_batch_file(client, input_path, metadata=None):
     with open(input_path, "rb") as f:
         batch_input_file = client.files.create(
@@ -667,6 +678,7 @@ def submit_openai_batch_file(client, input_path, metadata=None):
             purpose="batch"
         )
 
+    # OpenAI returns a file with an id: batch_input_file.id
     return client.batches.create(
         input_file_id=batch_input_file.id,
         endpoint="/v1/responses",
@@ -674,6 +686,21 @@ def submit_openai_batch_file(client, input_path, metadata=None):
         metadata=metadata or {}
     )
 
+# 1. Create output folder
+# 2. Load already submitted paper IDs from manifest
+# 3. Open corpus JSONL
+# 4. For each paper:
+#       - skip if not paper
+#       - skip if already submitted
+#       - build one OpenAI request
+#       - add request to current list
+# 5. Once list reaches 1000:
+#       - write local JSONL file
+#       - upload it to OpenAI
+#       - create batch job
+#       - save batch metadata in manifest
+#       - reset list
+# 6. At end, submit leftover papers
 
 def submit_hierarchy_information_batches(
     model,
@@ -683,11 +710,14 @@ def submit_hierarchy_information_batches(
     manifest_path=None,
     max_batches=None,
 ):
+    # make output_idr files for storing the json files for submitting to the API
     os.makedirs(output_dir, exist_ok=True)
 
+    # if manifest not provided we create the manifest file, where all submitted batches are stored by ID
     if manifest_path is None:
         manifest_path = os.path.join(output_dir, "batch_manifest.json")
 
+    # loads already submitted ids of the manifest
     submitted_ids = load_submitted_batch_ids(manifest_path)
     client = OpenAI()
 
@@ -696,8 +726,16 @@ def submit_hierarchy_information_batches(
     submitted_batches = []
 
     def submit_current_batch(batch_number):
+        #access file with number
         input_path = os.path.join(output_dir, f"hierarchy_batch_{batch_number:05d}.jsonl")
         write_openai_batch_input_file(requests_to_submit, input_path)
+
+        # submit batch to OpenAI and get a reply back containing a batch object:
+        # batch.id = batch_xyz
+        # batch.status = validating
+        # batch.input_file_id = file - abc123
+        # batch.output_file_id = None
+        # batch.error_file_id = None
 
         batch = submit_openai_batch_file(
             client,
@@ -709,6 +747,7 @@ def submit_hierarchy_information_batches(
             }
         )
 
+        # creates a dictionary summarizing the batch
         batch_info = {
             "batch_id": batch.id,
             "input_file_id": batch.input_file_id,
@@ -718,47 +757,65 @@ def submit_hierarchy_information_batches(
             "input_path": input_path,
             "paper_ids": paper_ids.copy(),
         }
+
+        # appends batch_info to the manifest dictionary
         append_batch_manifest(manifest_path, batch_info)
+        # appends the batch to submitted batches
         submitted_batches.append(batch_info)
         print(f"Submitted batch {batch.id} with {len(paper_ids)} requests.")
 
+    # loads the main corpus
     with open(corpus_path, "r", encoding="utf-8") as f:
         for line in f:
+            # loads each json document
             doc = json.loads(line)
 
+            # if source type is not a paper skip it
             if doc.get("source_type") != "paper":
                 continue
 
+            # get native id
             paper_id = doc.get("raw_source", {}).get("native_id")
 
+            # if the paper_id was already submitted we continue
             if paper_id is None or str(paper_id) in submitted_ids:
                 continue
 
+            # builds the request object with system and user prompt
             request = build_hierarchy_batch_request(doc, model)
 
             if request is None:
                 continue
 
+            # add to requests to submit array
             requests_to_submit.append(request)
+            # add the paper_id to mark processed ids
             paper_ids.append(str(paper_id))
 
+            #if we have enough for a batch
             if len(requests_to_submit) >= request_batch_size:
                 submit_current_batch(len(submitted_batches) + 1)
                 submitted_ids.update(paper_ids)
+                # reset arrays to empty
                 requests_to_submit = []
                 paper_ids = []
 
+                # stop if max_batches reached
                 if max_batches is not None and len(submitted_batches) >= max_batches:
                     return submitted_batches
 
+    # handles the last partial batch
     if requests_to_submit and (max_batches is None or len(submitted_batches) < max_batches):
         submit_current_batch(len(submitted_batches) + 1)
 
     return submitted_batches
 
+# just load all the batches in the manifest and check for status and output_file_id and save again
 def refresh_batch_manifest(manifest_path):
     client = OpenAI()
     manifest = load_json_if_exists(manifest_path, {"batches": []})
+
+    status_counter = Counter()
 
     for batch_info in manifest["batches"]:
         batch_id = batch_info["batch_id"]
@@ -769,10 +826,16 @@ def refresh_batch_manifest(manifest_path):
         batch_info["output_file_id"] = batch.output_file_id
         batch_info["error_file_id"] = batch.error_file_id
 
+        status_counter[batch.status] += 1
+
         print(
             f"Batch {batch_id}: {batch.status} | "
             f"output={batch.output_file_id} | error={batch.error_file_id}"
         )
+
+    print("\nBatch summary:")
+    for status, count in status_counter.items():
+        print(f"{status}: {count}")
 
     save_json(manifest_path, manifest)
     return manifest
@@ -791,29 +854,35 @@ def extract_output_text(response_body):
 
     return "\n".join(output_parts)
 
-
+# if batch processing completed download the results
 def download_completed_batch_outputs(
     manifest_path,
     output_cache_path="cache/hierarchy_cache_nano_batch.json",
     downloaded_dir="cache/openai_hierarchy_batches/downloaded_outputs",
 ):
+    # set the download directory where we put all the answers
     os.makedirs(downloaded_dir, exist_ok=True)
 
     client = OpenAI()
+    # load the manifest and hierarchy cache
     manifest = load_json_if_exists(manifest_path, {"batches": []})
     hierarchy_cache = load_json_if_exists(output_cache_path, {})
 
+    # go through each batch in the manifest
     for batch_info in manifest["batches"]:
+        # if status is completed skip
         if batch_info.get("status") != "completed":
             print(f"Skipping {batch_info['batch_id']} because status is {batch_info.get('status')}")
             continue
 
+        # get output file id
         output_file_id = batch_info.get("output_file_id")
 
         if not output_file_id:
             print(f"No output file for {batch_info['batch_id']}")
             continue
 
+        # create local_output_path so one file per batch
         local_output_path = os.path.join(
             downloaded_dir,
             f"{batch_info['batch_id']}_output.jsonl"
@@ -824,18 +893,26 @@ def download_completed_batch_outputs(
             content = client.files.content(output_file_id)
             content.write_to_file(local_output_path)
 
+        # open the downloaded file
         with open(local_output_path, "r", encoding="utf-8") as f:
             for line in f:
+                # load the json response file
                 result = json.loads(line)
 
                 paper_id = result["custom_id"]
 
+                # continue if paper id already exists
+                if paper_id in hierarchy_cache:
+                    continue
+
+                # if there was an error for this paper write down the error message
                 if result.get("error") is not None:
                     hierarchy_cache[paper_id] = {
                         "error": result["error"]
                     }
                     continue
 
+                # return only the needed json response text
                 response_body = result["response"]["body"]
                 output_text = extract_output_text(response_body)
 
@@ -850,7 +927,84 @@ def download_completed_batch_outputs(
     print(f"Total cached results: {len(hierarchy_cache)}")
     return hierarchy_cache
 
+def run_batch_submission_nicely(
+    model="gpt-5-nano",
+    corpus_path="output/documents_enriched_01.jsonl",
+    request_batch_size=1000,
+    output_dir="cache/openai_hierarchy_batches",
+    max_batches=1,
+):
+    print("\n===== OPENAI BATCH SUBMISSION =====")
+    print(f"Model: {model}")
+    print(f"Corpus path: {corpus_path}")
+    print(f"Request batch size: {request_batch_size}")
+    print(f"Output dir: {output_dir}")
+    print(f"Max batches: {max_batches}")
+    print("===================================\n")
 
+    manifest_path = os.path.join(output_dir, "batch_manifest.json")
+
+    try:
+        submitted_ids = load_submitted_batch_ids(manifest_path)
+        print(f"Already submitted papers in manifest: {len(submitted_ids)}")
+
+        submitted_batches = submit_hierarchy_information_batches(
+            model=model,
+            corpus_path=corpus_path,
+            request_batch_size=request_batch_size,
+            output_dir=output_dir,
+            manifest_path=manifest_path,
+            max_batches=max_batches,
+        )
+
+        print("\n===== SUBMISSION FINISHED =====")
+        print(f"Newly submitted batches: {len(submitted_batches)}")
+
+        total_requests = sum(len(batch["paper_ids"]) for batch in submitted_batches)
+        print(f"Newly submitted paper requests: {total_requests}")
+
+        print(f"Manifest saved at: {manifest_path}")
+
+        if submitted_batches:
+            print("\nSubmitted batch IDs:")
+            for batch in submitted_batches:
+                print(
+                    f"- {batch['batch_id']} | "
+                    f"status={batch['status']} | "
+                    f"papers={len(batch['paper_ids'])}"
+                )
+        else:
+            print("No new batches submitted. Maybe all papers were already in the manifest.")
+
+        print("\nNext step later:")
+        print(f"refresh_batch_manifest('{manifest_path}')")
+
+        return submitted_batches
+
+    except Exception as e:
+        print("\n❌ BATCH SUBMISSION FAILED")
+        print(f"Error type: {type(e).__name__}")
+        print(f"Error message: {e}")
+        print("\nCheck:")
+        print("- Is OPENAI_API_KEY set?")
+        print("- Does the corpus_path exist?")
+        print("- Is the JSONL corpus valid?")
+        print("- Are the batch request objects valid?")
+        raise
+
+def inspect_failed_batch(batch_id):
+    client = OpenAI()
+    batch = client.batches.retrieve(batch_id)
+
+    print("\n===== FAILED BATCH INSPECTION =====")
+    print(f"Batch ID: {batch.id}")
+    print(f"Status: {batch.status}")
+    print(f"Input file ID: {batch.input_file_id}")
+    print(f"Output file ID: {batch.output_file_id}")
+    print(f"Error file ID: {batch.error_file_id}")
+
+    print("\nFull batch object:")
+    print(batch.model_dump_json(indent=4))
 #--------------------------main program-----------------------------------------------------------------
 if __name__ == "__main__":
     # choose the batch size with wich semantic scholar responds
@@ -858,11 +1012,13 @@ if __name__ == "__main__":
     # semantic_scholar_batch_size = 250
     # run_semantic_scholar_api_call_program(semantic_scholar_batch_size)
     model = "gpt-5-nano"
-    # run_cost_estimation(model, 5000, 10)
-    hierarchy_information_extraction_parallel(
-        model=model,
-        corpus_path="output/documents_enriched_01.jsonl",
-        batch_size=5000,
-        max_workers=5,
-        output_cache_path="cache/hierarchy_cache_nano_4.json",
-    )
+    # run_cost_estimation(model=model, number_of_queries=2000, MAX_BUDGET=10, using_batch_api=True)
+    # hierarchy_information_extraction_parallel(
+    #     model=model,
+    #     corpus_path="output/documents_enriched_01.jsonl",
+    #     batch_size=5000,
+    #     max_workers=5,
+    #     output_cache_path="cache/hierarchy_cache_nano_4.json",
+    # )
+    # run_batch_submission_nicely(request_batch_size=1000)
+    refresh_batch_manifest('cache/openai_hierarchy_batches/batch_manifest.json')
