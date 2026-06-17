@@ -14,7 +14,7 @@ __pycache__/
 data/
 output/
 cache/
-code/results/
+project_code/results/
 project_datasets/cache/
 *.parquet
 *.jsonl

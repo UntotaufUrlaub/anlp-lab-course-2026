@@ -55,6 +55,38 @@ Creating query records for all of them would generate tens of thousands of addit
 potentially hundreds of thousands of qrel entries.
 A fixed random seed (Random(42)) is used.
 
+### 03: Hierarchy Data
+
+documents_enriched_02.jsonl
+→ documents_enriched_03.jsonl
+
+Hierarchical information is added by querying an LLM that can be run on the local
+machine.
+The hierarchy information which is added is split into the following categories:
+```
+{
+  "hierarchical": {
+    "affiliations": [
+        {"country:", "sector:", "organization:"},
+        ...
+    ],
+    "field_of_study_path": {
+      "field":,
+      "research_area":,
+      "topic_family":,
+      "specific_topic":,
+    },
+    "method_path": {
+      "method_family":,
+      "method_category":,
+      "specific_method":,
+    }
+  }
+}
+```
+Remarks:
+- Since there are several affiliations per paper, affiliations contains a list of lists of hierarchy.
+
 ## Requirements
 
 Python 3.12.0
@@ -121,31 +153,31 @@ Use `python project_datasets/data_set_alignment.py --use-cache` to reuse cached 
 ### 4) Validate the benchmark setup
 
 ```bash
-python code/validate_benchmark.py
+python project_code/validate_benchmark.py
 ```
 
 ### 5) Run the retrieval benchmark (takes very... long)
 
 ```bash
-python code/benchmark.py
+python project_code/benchmark.py
 ```
 
 better
 
 ```bash
-python code/benchmark.py --batch-size 10
+python project_code/benchmark.py --batch-size 10
 ```
 
 For quick debug testing use a smaller sampled catalog:
 
 ```bash
-python code/benchmark.py --debug
+python project_code/benchmark.py --debug
 ```
 
 Or explicitly sample a subset of documents while preserving query/qrel groups:
 
 ```bash
-python code/benchmark.py --sample-size 500 --batch-size 10
+python project_code/benchmark.py --sample-size 500 --batch-size 10
 ```
 
 #### other command flags:

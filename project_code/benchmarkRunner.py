@@ -11,11 +11,11 @@ try:
     )
     from metrics import evaluate
 except ImportError:
-    from code.methods import (
+    from project_code.methods import (
         BaseMethod,
         prepare_text,
     )
-    from code.metrics import evaluate
+    from project_code.metrics import evaluate
 
 logger = logging.getLogger(__name__)
 
