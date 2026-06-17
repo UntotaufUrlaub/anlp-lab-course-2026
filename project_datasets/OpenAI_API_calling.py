@@ -1042,6 +1042,7 @@ class OpenAIBatchManager:
     def manager_run(self,run_once=False):
         cycle_number = 1
         while True:
+            print("\033[2J\033[H", end="", flush=True)
             # 1. Reload the manifest
             self.refresh_batch_manifest()
 
@@ -1104,10 +1105,7 @@ if __name__ == "__main__":
         check_interval_seconds=check_interval_seconds,
     )
 
-    # manager.manager_run(run_once=True)
-    # manager.print_manifest_summary()
+    manager.manager_run(run_once=False)
 
-    # run_cost_estimation(model, 64183-2600, 4.18, 800, 1, True)
-    manager.print_manifest_summary()
-    print("cached:", manager.count_cached_results())
-    print("Unsubmitted:", manager.count_unsubmitted_papers())
+
+

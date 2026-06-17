@@ -26,6 +26,9 @@ def write_jsonl(path, data):
         for record in data:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
+def already_done(path):
+    return os.path.exists(path) and os.path.getsize(path) > 0
+
 # --------------------------------- adds info of paper_cache into common schema ------------
 def make_paper_metadata_enricher(paper_cache_path):
     ensure_file_exists(paper_cache_path)
@@ -74,6 +77,58 @@ def make_paper_metadata_enricher(paper_cache_path):
 # --------------------------------- adds queried hierarchy info into common schema ------------
 def make_hierarchy_enricher(hierarchy_cache_path):
     ensure_file_exists(hierarchy_cache_path)
+
+    with open(hierarchy_cache_path, "r", encoding="utf-8") as f:
+        hierarchy_cache = json.load(f)
+
+    def enrich(doc):
+        if doc["source_type"] != "paper":
+            return doc
+
+        hierarchical = doc["structured_fields"].get("hierarchical", {})
+
+        # already successfully enriched
+        if hierarchical and "errors" not in hierarchical:
+            return doc
+
+        corpus_id = str(doc["raw_source"].get("native_id"))
+        cache_entry = hierarchy_cache.get(corpus_id)
+
+        # not available yet, leave untouched
+        if cache_entry is None:
+            return doc
+
+        # now we know we tried this document
+        doc["structured_fields"]["hierarchical"]["errors"] = []
+
+        metadata = cache_entry.get("hierarchy_info")
+
+        if not metadata:
+            doc["structured_fields"]["hierarchical"]["errors"].append(
+                "missing_hierarchy_info"
+            )
+            return doc
+
+        try:
+            parsed_metadata = json.loads(metadata)
+        except (json.JSONDecodeError, TypeError):
+            doc["structured_fields"]["hierarchical"]["errors"].append(
+                "JSONDecodeError"
+            )
+            return doc
+
+        if not isinstance(parsed_metadata, dict):
+            doc["structured_fields"]["hierarchical"]["errors"].append(
+                "hierarchy_info_not_dict"
+            )
+            return doc
+
+        doc["structured_fields"]["hierarchical"].pop("errors", None)
+        doc["structured_fields"]["hierarchical"].update(parsed_metadata)
+
+        return doc
+
+    return enrich
 
 # --------------------------------- add paper to paper queries ------------
 def make_paper_to_paper_query_enricher(random_number=200, seed=42):
@@ -183,22 +238,65 @@ def run_dataset_addition(documents_input_path,
     write_jsonl(documents_output_path, docs)
     write_jsonl(qrels_output_path, qrels)
 
+def run_metadata_enrichment(force_overwrite=False):
+    output_path = "output/documents_enriched_01.jsonl"
+
+    if already_done(output_path) and not force_overwrite:
+        print(f"Skipping metadata enrichment. Already exists: {output_path}")
+        return
+
+    if force_overwrite:
+        print("\nForce rebuilding metadata enrichment...")
+    else:
+        print("\nRunning metadata enrichment...")
+    run_document_enrichment(
+        "output/documents.jsonl",
+        output_path,
+        [make_paper_metadata_enricher("cache/paper_cache.json")],
+    )
+    print(f"Done. Wrote {output_path}")
+
+def run_paper_to_paper_enrichment(force_overwrite=False):
+    documents_output_path = "output/documents_enriched_02.jsonl"
+    qrels_output_path = "output/qrels_enriched_02.jsonl"
+
+    if already_done(documents_output_path) and already_done(qrels_output_path) and not force_overwrite:
+        print(f"Skipping paper_to_paper query enrichment. "
+              f"Already exists: {documents_output_path}, {qrels_output_path}")
+        return
+
+    if force_overwrite:
+        print("\nForce running paper_to_paper enrichment...")
+    else:
+        print("\nRunning paper_to_paper enrichment...")
+    run_dataset_addition(
+        "output/documents_enriched_01.jsonl",
+        documents_output_path,
+        "output/qrels.jsonl",
+        qrels_output_path,
+        [make_paper_to_paper_query_enricher(200, 42)],
+    )
+    print(f"Done. Wrote {documents_output_path} and {qrels_output_path}")
+
+def run_hierarchy_enrichment(force_overwrite=False):
+    output_path = "output/documents_enriched_03.jsonl"
+
+    if already_done(output_path) and not force_overwrite:
+        print(f"Skipping hierarchy data enrichment. Already exists: {output_path}")
+        return
+
+    if force_overwrite:
+        print("\nForce rebuilding hierarchy enrichment...")
+    else:
+        print("\nRunning hierarchy data enrichment...")
+    run_document_enrichment(
+        "output/documents_enriched_02.jsonl",
+        output_path,
+        [make_hierarchy_enricher("cache/hierarchy_cache_nano_batch.json")],
+    )
+    print(f"Done. Wrote {output_path}")
 
 if __name__ == "__main__":
-    # select the enrichers you would like
-    info_enrichers = [make_paper_metadata_enricher("cache/paper_cache.json")]
-    dataset_enrichers=[make_paper_to_paper_query_enricher(200,42)]
-
-    start = time.time()
-    print(f"Enriching document with metadata information...")
-
-    run_document_enrichment("output/documents.jsonl", "output/documents_enriched_01.jsonl",
-                            info_enrichers)
-    print(f"\nAdding paper to paper queries to the main document and the qrels...")
-
-    run_dataset_addition("output/documents_enriched_01.jsonl",
-                         "output/documents_enriched_02.jsonl",
-                         "output/qrels.jsonl",
-                         "output/qrels_enriched_02.jsonl",
-                         dataset_enrichers)
-    print("✅ Done!")
+    run_metadata_enrichment()
+    run_paper_to_paper_enrichment()
+    run_hierarchy_enrichment()
