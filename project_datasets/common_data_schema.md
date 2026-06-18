@@ -282,25 +282,25 @@ Fields:
 
 ### GitHub Issues
 
-| Schema field                           | Source column                            | Notes                                         |
-| -------------------------------------- | ---------------------------------------- | --------------------------------------------- |
-| `id`                                   | `issue_no` + `repository`                | e.g. `github:apache-airflow:issue:23145`      |
-| `source_dataset`                       | `repository`                             | e.g. `github_apache_airflow`                  |
-| `source_type`                          | —                                        | hardcode `github_issue`                       |
-| `title`                                | `issue_title`                            |                                               |
-| `main_text`                            | `issue_body`                             |                                               |
-| `secondary_texts`                      | `comments`                               | list of comment strings                       |
-| `structured_fields.categorical.status` | derived                                  | `open` / `closed` from `closed_at` null check |
-| `structured_fields.hierarchical`       | —                                        | empty `{}` for now                            |
-| `entities.people`                      | —                                        | empty for now; assignees derivable later      |
-| `entities.organizations`               | —                                        | empty for now                                 |
-| `entities.projects`                    | `repository`                             | derivable now if desired                      |
-| `entities.topics`                      | —                                        | empty for now                                 |
-| `relations.explicit_related_ids`       | `related_issue_nos` from `linked_issues` | join on `issue_no`                            |
-| `retrieval_metadata.is_queryable`      | —                                        | `true`                                        |
-| `retrieval_metadata.is_candidate`      | —                                        | `true`                                        |
-| `raw_source.native_id`                 | `issue_no`                               |                                               |
-| `raw_source.url`                       | `issue_url`                              |                                               |
+| Schema field                           | Source column                           | Notes                                           |
+|----------------------------------------|-----------------------------------------|-------------------------------------------------|
+| `id`                                   | `issue_no` + `repository`               | e.g. `github:apache-airflow:issue:23145`        |
+| `source_dataset`                       | `repository`                            | e.g. `github_apache_airflow`                    |
+| `source_type`                          | —                                       | hardcode `github_issue`                         |
+| `title`                                | `issue_title`                           |                                                 |
+| `main_text`                            | `issue_body`                            |                                                 |
+| `secondary_texts`                      | `comments`                              | list of comment strings                         |
+| `structured_fields.categorical.status` | —                                        | empty                                           |
+| `structured_fields.hierarchical`       | `labels`                                | list labels forming a hierarchy, e.g. `area\ui` |
+| `entities.people`                      | —                                       | empty for now; assignees derivable later        |
+| `entities.organizations`               | —                                       | empty for now                                   |
+| `entities.projects`                    | `repository`                            | derivable now if desired                        |
+| `entities.topics`                      | —                                       | empty for now                                   |
+| `relations.explicit_related_ids`       | `related_issue_nos` from `linked_issues` | join on `issue_no`                              |
+| `retrieval_metadata.is_queryable`      | —                                       | `true`                                          |
+| `retrieval_metadata.is_candidate`      | —                                       | `true`                                          |
+| `raw_source.native_id`                 | `issue_no`                              |                                                 |
+| `raw_source.url`                       | `issue_url`                             |                                                 |
 
 ### Paper Corpus Records
 
