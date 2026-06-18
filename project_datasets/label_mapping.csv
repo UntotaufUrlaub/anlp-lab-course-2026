@@ -1,0 +1,211 @@
+raw_label,normalized_path
+comp: docs-infra,area/docs-infra
+comp: core,area/platform-core/engine
+Component: compiler,area/platform-core/engine
+Core,area/platform-core/engine
+engine,area/platform-core/engine
+topic:core,area/platform-core/engine
+f: material design,area/platform-core/framework
+framework,area/platform-core/framework
+comp: router,area/platform-core/router
+a: accessibility,area/ui
+comp: animations,area/ui
+component: ux,area/ui
+design,area/ui
+GUI,area/ui
+UI,area/ui
+ui,area/ui
+UI-XML/Widgets,area/ui
+UX,area/ui
+ux,area/ui
+a: text input,area/ui/text-input
+e/4 :clock4:,effort/large
+e/3 :clock3:,effort/medium
+Estimation - 3 (M),effort/medium
+S2,effort/medium
+E-easy,effort/small
+e/2 :clock2:,effort/small
+S1,effort/small
+assigned,lifecycle/active/assigned
+in progress,lifecycle/active/in-progress
+in-progress,lifecycle/active/in-progress
+Keep Open,lifecycle/active/keep-open
+done,lifecycle/done/fixed
+fixed,lifecycle/done/fixed
+release,lifecycle/done/released
+released,lifecycle/done/released
+waiting for PR to land (fixed),lifecycle/done/released
+pr-merged,lifecycle/review/pr-merged
+has pr,lifecycle/review/pr-open
+Patch available,lifecycle/review/pr-open
+pr exists,lifecycle/review/pr-open
+Resolution: PR Submitted,lifecycle/review/pr-open
+state: has PR,lifecycle/review/pr-open
+Accepted,lifecycle/triage/accepted
+approved,lifecycle/triage/accepted
+confirmed,lifecycle/triage/accepted
+needs info,lifecycle/triage/needs-info
+Needs Triage,lifecycle/triage/needs-triage
+Status: Not started,lifecycle/triage/needs-triage
+feature request,lifecycle/triage/proposed
+Feature Request,lifecycle/triage/proposed
+Feature request,lifecycle/triage/proposed
+proposal,lifecycle/triage/proposed
+type: feature request,lifecycle/triage/proposed
+Reproduced,lifecycle/triage/reproduced
+triaged,lifecycle/triage/triaged
+[QA]:Caught_by_exploratory,lifecycle/verify/caught-by-exploratory
+[QA]:Verified fixed,lifecycle/verify/qa-verified
+eng:qa:verified,lifecycle/verify/qa-verified
+Q-verified,lifecycle/verify/qa-verified
+QA-verified,lifecycle/verify/qa-verified
+Resolution: Fixed,lifecycle/verify/qa-verified
+state: verified fixed,lifecycle/verify/qa-verified
+verified,lifecycle/verify/qa-verified
+easy,meta/contribution/good-first-issue
+good first issue,meta/contribution/good-first-issue
+Good first issue,meta/contribution/good-first-issue
+Good First Issue!,meta/contribution/good-first-issue
+hacktoberfest,meta/contribution/hacktoberfest
+Hacktoberfest,meta/contribution/hacktoberfest
+help wanted,meta/contribution/help-wanted
+Help Wanted,meta/contribution/help-wanted
+Help wanted,meta/contribution/help-wanted
+up-for-grabs,meta/contribution/help-wanted
+welcome contribute,meta/contribution/help-wanted
+BOUNTY 100,meta/reward/bounty/100
+bounty-s,meta/reward/bounty/s
+BOSS,meta/reward/bounty/standard
+bounty,meta/reward/bounty/standard
+bounty-xs,meta/reward/bounty/xs
+server,platform/backend/server
+Android,platform/mobile/android
+android,platform/mobile/android
+mobile-app,platform/mobile/android
+os: android,platform/mobile/android
+P-android,platform/mobile/android
+p/Android,platform/mobile/android
+p/android,platform/mobile/android
+platform-android,platform/mobile/android
+platform/android,platform/mobile/android
+platform: android,platform/mobile/android
+Platform: Android,platform/mobile/android
+platform:android,platform/mobile/android
+mobile,platform/mobile/generic
+iOS,platform/mobile/ios
+ios,platform/mobile/ios
+os: ios,platform/mobile/ios
+p/iOS 🍎,platform/mobile/ios
+platform-ios,platform/mobile/ios
+Platform: iOS,platform/mobile/ios
+platform: ios,platform/mobile/ios
+[Pri] Blocking,priority/p0/blocker
+P0,priority/p0/blocker
+critical,priority/p1/critical
+[Pri] High,priority/p1/high
+high,priority/p1/high
+high priority,priority/p1/high
+high-priority,priority/p1/high
+P1,priority/p1/high
+Priority-High,priority/p1/high
+priority-P1,priority/p1/high
+Priority: Essential,priority/p1/high
+priority: high,priority/p1/high
+Priority: High,priority/p1/high
+priority: p1,priority/p1/high
+[Pri] Medium,priority/p2/important
+medium-priority,priority/p2/important
+P2,priority/p2/important
+Priority-Medium,priority/p2/important
+priority-P2,priority/p2/important
+Priority: Important,priority/p2/important
+priority: medium,priority/p2/important
+priority: p2,priority/p2/important
+[Pri] Low,priority/p3/nice-to-have
+P3,priority/p3/nice-to-have
+Priority: Nice-to-have,priority/p3/nice-to-have
+priority: p3,priority/p3/nice-to-have
+backlog,priority/p4/backlog
+P4,priority/p4/backlog
+frozen-due-to-age,resolution/inactive/frozen
+Resolution: Locked,resolution/inactive/locked
+outdated,resolution/inactive/stale
+stale,resolution/inactive/stale
+Stale,resolution/inactive/stale
+duplicate,resolution/invalid/duplicate
+transferred,resolution/invalid/transferred
+wontfix,resolution/invalid/wontfix
+[QA]:Blocker issue,severity/blocker
+blocker,severity/blocker
+[QA]:Major issue,severity/major/high
+high-severity,severity/major/high
+severity: high,severity/major/high
+[QA]:Minor issue,severity/minor/low
+low-severity,severity/minor/low
+[QA]:Normal issue,severity/minor/medium
+medium-severity,severity/minor/medium
+[Type] Enhancement,type/change/feature
+enhancement,type/change/feature
+Enhancement,type/change/feature
+feature,type/change/feature
+Feature,type/change/feature
+feature request,type/change/feature
+Feature Request,type/change/feature
+Feature request,type/change/feature
+improvement,type/change/feature
+new feature,type/change/feature
+proposal,type/change/feature
+severe: new feature,type/change/feature
+T-Enhancement,type/change/feature
+t/enhancement ➕,type/change/feature
+type: enhancement,type/change/feature
+Type: Enhancement,type/change/feature
+Type: Feature,type/change/feature
+type: feature request,type/change/feature
+Type: Improvement,type/change/feature
+🎉 feature,type/change/feature
+performance,type/change/performance
+refactor,type/change/refactor
+:bug: bug,type/defect/bug
+[Type] Bug,type/defect/bug
+bug,type/defect/bug
+Bug,type/defect/bug
+Bug report,type/defect/bug
+defect,type/defect/bug
+Defect,type/defect/bug
+Issue-Bug,type/defect/bug
+kind/bug,type/defect/bug
+T-Bug,type/defect/bug
+T-Defect,type/defect/bug
+t/bug,type/defect/bug
+t/bug :bug:,type/defect/bug
+type: accepted/bug,type/defect/bug
+type: bug,type/defect/bug
+Type: Bug,type/defect/bug
+type: bug/fix,type/defect/bug
+Type: Confirmed bug,type/defect/bug
+Type:Bug,type/defect/bug
+type:bug,type/defect/bug
+🐛 bug,type/defect/bug
+🐞 bug,type/defect/bug
+[Type] Crash,type/defect/crash
+crash,type/defect/crash
+report/crash report,type/defect/crash
+severe: crash,type/defect/crash
+type: crash,type/defect/crash
+regression,type/defect/regression
+Regression,type/defect/regression
+severe: regression,type/defect/regression
+Rendering bug,type/defect/rendering
+security,type/defect/security
+discussion,type/knowledge/discussion
+comp: docs,type/knowledge/docs
+docs,type/knowledge/docs
+documentation,type/knowledge/docs
+question,type/knowledge/question
+[Type] Broken Window,type/maintenance/broken-window
+Area: App+Library Build,type/maintenance/build
+build,type/maintenance/build
+[Type] Task,type/maintenance/task
+task,type/maintenance/task
+Type: Task,type/maintenance/task
