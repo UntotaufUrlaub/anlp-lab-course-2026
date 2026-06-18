@@ -77,94 +77,35 @@ def load_json_dataframes(path):
     return issues_df, prs_df, links_df
 
 
-_LABEL_MAP = {
-    "bug":            ["bug", "type: bug", "[Type] Bug", "type:bug", "t/bug :bug:", "t/bug",
-                       "🐞 Bug", "🐛 Bug", ":bug: bug", "kind/bug", "Issue-Bug", "T-bug",
-                       "bug report", "Defect", "T-Defect", "Type: Confirmed bug",
-                       "report/crash report", "type: bug/fix", "type: accepted/bug",
-                       "[Type] Broken Window"],
-    "crash":          ["crash", "[Type] Crash", "Type: Crash", "severe: crash"],
-    "regression":     ["regression", "severe: regression"],
-    "enhancement":    ["enhancement", "feature", "feature request", "[Type] Enhancement",
-                       "type: enhancement", "t/enhancement ➕", "Type: Improvement", "improvement",
-                       "Type: Feature Request", "Type: Feature", "severe: new feature", "proposal",
-                       "T-Enhancement", "New feature", "feature-request", "Performance",
-                       "New architecture"],
-    "task":           ["task", "type: task", "[Type] Task", "refactor", "testing"],
-    "question":       ["question", "discussion", "support"],
-    "documentation":  ["documentation", "docs", "comp: docs", "d: api docs"],
-    "priority:critical": ["P0", "blocker", "release blocker", "HIGH PRIORITY", "[Pri] Blocking",
-                          "e2e test blocker", "critical"],
-    "priority:high":     ["P1", "priority: high", "high-priority", "[Pri] High",
-                          "Priority: Essential", "priority-P1", "severity: high", "high-severity",
-                          "priority: important", "high", "p1", "Priority-High",
-                          "freq3: high", "priority: p1"],
-    "priority:medium":   ["P2", "priority: medium", "[Pri] Medium", "medium-priority",
-                          "medium-severity", "priority: p2", "p2-high", "freq2: medium",
-                          "Priority-Medium", "priority/P2"],
-    "priority:low":      ["P3", "P4", "priority: p3", "[Pri] Low", "Priority: Nice-to-have",
-                          "p3", "freq1: low", "Priority: Low", "low-severity"],
-    "status:in_progress": ["in progress", "in-progress", "assigned", "triaged", "approved",
-                           "confirmed", "accepted", "reproduced", "Status: Not started",
-                           "Needs Triage", "needs info"],
-    "status:qa":          ["[QA]:Verified fixed", "[QA]:Normal issue", "[QA]:Major issue",
-                           "[QA]:Minor issue", "[QA]:Blocker issue", "[QA]:Caught_by_exploratory",
-                           "Q-verified", "eng:qa:verified", "state: verified fixed",
-                           "QA Pass-Win64", "QA Pass-Linux", "QA Pass-macOS",
-                           "verified", "QA-verified", "QA/Yes"],
-    "status:resolved":    ["fixed", "resolution: fixed", "released", "Done", "PR exists",
-                           "has pr", "pr-merged", "Patch available",
-                           "waiting for PR to land (fixed)", "Resolution: PR Submitted",
-                           "has-pr", "state: has PR"],
-    "status:stale":       ["Stale", "outdated", "frozen-due-to-age", "Resolution: Locked",
-                           "Duplicate", "backlog", "wontfix"],
-    "platform:android":   ["Android", "platform: android", "p/android", "platform-android",
-                           "platform:android", "OS: Android", "P-android", "[OS] Android",
-                           "platform/android", "mobile-app"],
-    "platform:ios":       ["iOS", "platform: ios", "platform-ios", "os: iOS", "p/iOS 🍎"],
-    "platform:web":       ["platform: web", "platform-web", "web", "Mobile Web", "platform:web"],
-    "platform:linux":     ["Platform: Linux", "platform-linux", "os: Linux",
-                           "platform: Linux 🐧"],
-    "layer:frontend":     ["UI", "ux", "Design", "GUI", "frontend", "front-end", "front end",
-                           "CSS", "layout", "Rendering", "ui/ux", "Area-UIUX", "component: ux",
-                           "f: material design", "Type: Frontend", "ui-mobile", "[Type] UI Bug",
-                           "NUX", "design issue", "ui: CSS", "ux-improvement", "UI-XML/Widgets",
-                           "Frontend Design", "Type: UX", "component: legacy frontend",
-                           "A-frontend", "subj: ui/ux", "Rendering bug", "a: text input",
-                           "accessibility", "a: accessibility"],
-    "layer:backend":      ["backend", "server", "API", "comp: server", "Type: Backend",
-                           "AREA: server", "crate:server", "server side", "Server issue",
-                           "rest-api", "comp: http", "websockets", "Service: Messaging",
-                           "Service: Database", "Service: Authentication", "comp: service-worker",
-                           "severe: API break", "type: api", "Core REST API Task"],
-    "layer:infrastructure": ["Build", "infra", "Infrastructure", "A-build",
-                             "Area: App+Library Build", "comp: build & ci", "travis-build",
-                             "build-ci", "build system", "area: build", "T-infra"],
-    "community:good_first_issue": ["good first issue", "up-for-grabs", "Easy",
-                                   "welcome contribute", "Good First Issue!", "E-easy"],
-    "community:help_wanted": ["help wanted"],
-    "community:bounty":      ["Bounty", "bounty-xs", "bounty-S", "Hacktoberfest", "BOSS",
-                              "community-sprint", "PSoC - 2020"],
-}
-
-_REVERSE_LABEL_MAP = {raw: canonical for canonical, raws in _LABEL_MAP.items() for raw in raws}
-
-
-def normalise_labels(issues_df):
+def normalise_labels(issues_df, mapping_csv=None):
     """
     Returns a copy of issues_df with the 'labels' column replaced by
-    pipe-separated canonical group names (e.g. 'bug|priority:high|layer:frontend').
-    Labels not in the map are dropped.
+    pipe-separated normalised paths from label_mapping.csv
+    (e.g. 'area/platform-core/engine|area/ui').
+    Labels not present in the mapping are dropped.
+
+    Parameters
+    ----------
+    issues_df : pd.DataFrame
+    mapping_csv : str or None
+        Path to label_mapping.csv. Defaults to label_mapping.csv in the
+        same directory as this file.
     """
+    if mapping_csv is None:
+        mapping_csv = os.path.join(os.path.dirname(__file__), "label_mapping.csv")
+
+    mapping = pd.read_csv(mapping_csv)
+    label_map = dict(zip(mapping["raw_label"].str.strip(), mapping["normalized_path"].str.strip()))
+
     def _normalise(raw_labels):
         if not raw_labels or str(raw_labels) == "nan":
             return ""
-        canonical = {
-            _REVERSE_LABEL_MAP[l.strip()]
+        normalised = {
+            label_map[l.strip()]
             for l in str(raw_labels).split("|")
-            if l.strip() in _REVERSE_LABEL_MAP
+            if l.strip() in label_map
         }
-        return "|".join(sorted(canonical))
+        return "|".join(sorted(normalised))
 
     result = issues_df.copy()
     result["labels"] = issues_df["labels"].apply(_normalise)
