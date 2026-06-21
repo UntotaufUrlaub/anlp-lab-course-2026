@@ -41,6 +41,12 @@ def sanity_check(cache_path):
     method_category_counter = Counter()
     problem_counter = Counter()
 
+    # 0. check if all ids are unique
+    all_keys_unique = False
+    keys_set = set(parsed.keys())
+    if len(keys_set) == len(parsed):
+        all_keys_unique = True
+
     for paper_id, data in parsed.items():
 
         # error of data not being a dictionary
@@ -147,7 +153,9 @@ def sanity_check(cache_path):
                 problem_counter["Possibly too long label, more than 8"] += 1
 
     print("\n===== SANITY CHECK REPORT =====")
+
     print(f"Total entries: {len(cache)}")
+    print(f"Keys are all unique: {all_keys_unique}")
     print(f"Parsed successfully: {len(parsed)}")
     print(f"JSON errors: {len(json_errors)}")
 
