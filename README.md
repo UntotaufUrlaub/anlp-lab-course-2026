@@ -86,6 +86,9 @@ The hierarchy information which is added is split into the following categories:
 ```
 Remarks:
 - Since there are several affiliations per paper, affiliations contains a list of lists of hierarchy.
+- 6197/64183 (~9.6%)  papers had an empty title and abstract so were not used to query the LLM
+- around 602 entries of the hierarchy cache are pure strings due to the model having been queried with emtpy title and abstract
+- LLM used: OpenAI gpt-5-nano
 
 ## Requirements
 

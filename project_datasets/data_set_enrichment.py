@@ -1,6 +1,8 @@
 import json
 import os
 import random
+import re
+import sys
 import time
 
 def ensure_file_exists(path):
@@ -75,6 +77,42 @@ def make_paper_metadata_enricher(paper_cache_path):
     return enrich
 
 # --------------------------------- adds queried hierarchy info into common schema ------------
+#Json preprocessing functions to clean invalid Json:
+def remove_comments_json_text(text):
+
+    text = re.sub(r"//.*?$", "", text, flags=re.MULTILINE)
+    text = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
+
+    text = text.replace("```json", "")
+    text = text.replace("```", "")
+
+    return text.strip()
+
+def remove_babble(text):
+    text = text.strip()
+    start = text.find("{")
+    end = text.rfind("}")
+
+    if start == -1 or end == -1 or end <= start:
+        return text
+
+    return text[start:end + 1]
+
+def repair_fragmented_schema(data):
+    if not isinstance(data, list):
+        return data
+
+    merged = {}
+
+    for item in data:
+        if isinstance(item, list):
+            merged["affiliations"] = item
+        elif isinstance(item, dict):
+            merged.update(item)
+
+    return merged
+
+
 def make_hierarchy_enricher(hierarchy_cache_path):
     ensure_file_exists(hierarchy_cache_path)
 
@@ -103,6 +141,7 @@ def make_hierarchy_enricher(hierarchy_cache_path):
 
         metadata = cache_entry.get("hierarchy_info")
 
+        # try cleaning approaches
         if not metadata:
             doc["structured_fields"]["hierarchical"]["errors"].append(
                 "missing_hierarchy_info"
@@ -112,10 +151,22 @@ def make_hierarchy_enricher(hierarchy_cache_path):
         try:
             parsed_metadata = json.loads(metadata)
         except (json.JSONDecodeError, TypeError):
-            doc["structured_fields"]["hierarchical"]["errors"].append(
-                "JSONDecodeError"
-            )
-            return doc
+            try:
+                clean_metadata = remove_comments_json_text(metadata)
+                clean_metadata = remove_babble(clean_metadata)
+
+                try:
+                    parsed_metadata = json.loads(clean_metadata)
+
+                except json.JSONDecodeError:
+                    fragment_list = json.loads("[" + clean_metadata + "]")
+                    parsed_metadata = repair_fragmented_schema(fragment_list)
+
+            except (json.JSONDecodeError, TypeError):
+                doc["structured_fields"]["hierarchical"]["errors"].append(
+                    "JSONDecodeError"
+                )
+                return doc
 
         if not isinstance(parsed_metadata, dict):
             doc["structured_fields"]["hierarchical"]["errors"].append(
@@ -243,6 +294,7 @@ def run_metadata_enrichment(force_overwrite=False):
 
     if already_done(output_path) and not force_overwrite:
         print(f"Skipping metadata enrichment. Already exists: {output_path}")
+        print("Use --overwrite-metadata to rebuild.\n")
         return
 
     if force_overwrite:
@@ -263,6 +315,7 @@ def run_paper_to_paper_enrichment(force_overwrite=False):
     if already_done(documents_output_path) and already_done(qrels_output_path) and not force_overwrite:
         print(f"Skipping paper_to_paper query enrichment. "
               f"Already exists: {documents_output_path}, {qrels_output_path}")
+        print("Use --readd-paper-to-paper to rebuild.\n")
         return
 
     if force_overwrite:
@@ -283,6 +336,7 @@ def run_hierarchy_enrichment(force_overwrite=False):
 
     if already_done(output_path) and not force_overwrite:
         print(f"Skipping hierarchy data enrichment. Already exists: {output_path}")
+        print("Use --overwrite-hierarchy to rebuild.\n")
         return
 
     if force_overwrite:
@@ -297,6 +351,11 @@ def run_hierarchy_enrichment(force_overwrite=False):
     print(f"Done. Wrote {output_path}")
 
 if __name__ == "__main__":
-    run_metadata_enrichment()
-    run_paper_to_paper_enrichment()
-    run_hierarchy_enrichment()
+    force_overwrite_metadata = "--overwrite-metadata" in sys.argv
+    force_readd_paper = "--readd-paper-to-paper" in sys.argv
+    force_overwrite_hierarchy = "--overwrite-hierarchy" in sys.argv
+
+
+    run_metadata_enrichment(force_overwrite_metadata)
+    run_paper_to_paper_enrichment(force_readd_paper)
+    run_hierarchy_enrichment(force_overwrite_hierarchy)

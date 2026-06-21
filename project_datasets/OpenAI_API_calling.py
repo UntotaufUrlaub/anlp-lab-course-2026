@@ -527,6 +527,11 @@ def build_hierarchy_batch_request(doc, model):
 def load_submitted_batch_ids(manifest_path):
     submitted_ids = set()
 
+    # Load permanently excluded IDs
+    if os.path.exists("cache/unusable_paper_ids.json"):
+        with open("cache/unusable_paper_ids.json", "r", encoding="utf-8") as f:
+            submitted_ids.update(str(x) for x in json.load(f))
+
     # if the manifest does not exist yet, return an empty set
     if not os.path.exists(manifest_path):
         return submitted_ids
@@ -853,6 +858,7 @@ class OpenAIBatchManager:
         self.print_key_value("Model", self.model)
         self.print_key_value("Active batches", f"{self.count_active_batches()}/{self.max_active_batches}")
         self.print_key_value("Cached results", self.format_number(self.count_cached_results()))
+        self.print_key_value("Excluded papers", self.format_number(len(self.get_excluded_ids())))
         self.print_key_value("Unsubmitted papers", self.format_number(self.count_unsubmitted_papers()))
         self.print_key_value("New downloads", self.format_number(new_downloads))
 
@@ -872,6 +878,16 @@ class OpenAIBatchManager:
             print()
             self.print_key_value("Next check", f"in {next_check} seconds")
 
+    # returns ids that should be generally excluded, because empty
+    def get_excluded_ids(self):
+        path = "cache/unusable_paper_ids.json"
+
+        if not os.path.exists(path):
+            return set()
+
+        with open(path, "r", encoding="utf-8") as f:
+            return {str(x) for x in json.load(f)}
+
     # returns submitted_ids that did not fail
     def get_submitted_ids(self):
         manifest = self.load_manifest()
@@ -888,7 +904,7 @@ class OpenAIBatchManager:
         with open(self.corpus_ids_path, "r", encoding="utf-8") as f:
             all_ids = {str(x) for x in json.load(f)}
 
-        return all_ids - self.get_submitted_ids()
+        return all_ids - self.get_submitted_ids()-self.get_excluded_ids()
 
     # counts the number of unsubmitted papers
     def count_unsubmitted_papers(self):
