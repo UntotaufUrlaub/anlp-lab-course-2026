@@ -11,11 +11,13 @@ def create_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--docs-path",
-        default="output/documents.jsonl",
+        default="output/documents_enriched_03.jsonl",
         help="Path to documents JSONL file",
     )
     parser.add_argument(
-        "--qrels-path", default="output/qrels.jsonl", help="Path to qrels JSONL file"
+        "--qrels-path",
+        default="output/qrels_enriched_02.jsonl",
+        help="Path to qrels JSONL file",
     )
     parser.add_argument(
         "--output-path",
