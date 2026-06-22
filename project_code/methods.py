@@ -146,16 +146,18 @@ class MetadataAwareMethod(BaseMethod):
         self.field_embeddings = {}  # {field: (N, D)} for reranking
 
     def _extract_fields(self, doc: Dict) -> Dict[str, str]:
-        """Return ordered fields: metadata → title → main_text."""
         structured = doc.get("structured_fields", {}) or {}
-        categorical = structured.get("categorical", {})
+        categorical = structured.get("categorical", {}) or {}
+        hierarchical = structured.get("hierarchical", []) or []
 
-        metadata = categorical or categorical.get("fields_of_study") or []
-
+        fields_of_study = categorical.get("fields_of_study", [])
+        metadata_parts = (
+            fields_of_study
+            if isinstance(fields_of_study, list)
+            else [str(fields_of_study)]
+        ) + [v for v in hierarchical if v]
         return {
-            "metadata": (
-                " ".join(metadata) if isinstance(metadata, list) else str(metadata)
-            ),
+            "metadata": " ".join(metadata_parts),
             "title": doc.get("title") or "",
             "main_text": doc.get("main_text") or "",
         }
