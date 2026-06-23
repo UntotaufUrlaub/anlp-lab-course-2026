@@ -18,6 +18,8 @@ from rank_bm25 import BM25Okapi
 from sentence_transformers import SentenceTransformer
 from pathlib import Path
 
+from torchgen.api import structured
+
 # except ImportError:
 # import subprocess
 
@@ -49,8 +51,8 @@ def prepare_text(
 
     if include_hierarchical:
         structured = doc.get("structured_fields", {})
-        categorical = structured.get("hierarchical", {})
-        for key, values in categorical.items():
+        hierarchical = structured.get("hierarchical", {})
+        for key, values in hierarchical.items():
             if isinstance(values, list):
                 text_parts.append(" ".join(values))
             else:
@@ -63,17 +65,26 @@ def prepare_text(
 
 # create hash function to create a bm25 and dense embedding index depending on configuration of dataset
 # to later load with joblib efficiently
-def make_cache_key(documents: Dict, method:str,
+def make_cache_key(documents: Dict, method:str,model: str = None,
                    include_categorical: bool = False, include_hierarchical: bool=False,) -> str:
     """Create a stable hash for the BM25 index input."""
     hasher = hashlib.sha256()
 
-    config = {
-        "method": method,
-        "include_categorical": include_categorical,
-        "include_hierarchical": include_hierarchical,
-        "num_documents": len(documents),
-    }
+    if method=="dense":
+        config = {
+            "method": method,
+            "model": model,
+            "include_categorical": include_categorical,
+            "include_hierarchical": include_hierarchical,
+            "num_documents": len(documents),
+        }
+    else:
+        config = {
+            "method": method,
+            "include_categorical": include_categorical,
+            "include_hierarchical": include_hierarchical,
+            "num_documents": len(documents),
+        }
     hasher.update(json.dumps(config, sort_keys=True).encode("utf-8"))
 
     for doc_id in sorted(documents.keys()):
@@ -85,10 +96,13 @@ def make_cache_key(documents: Dict, method:str,
             "main_text": doc.get("main_text"),
         }
 
+        structured = doc.get("structured_fields", {})
+
         if include_categorical:
-            relevant_data["categorical"] = doc.get("structured_fields").get("categorical")
+            relevant_data["categorical"] = structured.get("categorical")
+
         if include_hierarchical:
-            relevant_data["hierarchical"] = doc.get("structured_fields").get("hierarchical")
+            relevant_data["hierarchical"] = structured.get("hierarchical")
 
         hasher.update(
             json.dumps(relevant_data, sort_keys=True, default=str).encode("utf-8")
@@ -185,6 +199,7 @@ class DenseEmbeddingBaseline(BaseMethod):
         # include gpu if possible for speed up
         device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model = SentenceTransformer(model_name, device=device)
+        self.model_name = model_name
         logger.info(f"Sentence Transformer model loaded: {model_name}")
         logger.info(f"Using device: {device}")
 
@@ -196,7 +211,8 @@ class DenseEmbeddingBaseline(BaseMethod):
             -> None:
         # create unique cache_key for this document configuration
         cache_key = make_cache_key(documents, include_hierarchical=include_hierarchical,
-                                        include_categorical=include_categorical, method="dense")
+                                    include_categorical=include_categorical,
+                                    method="dense", model=self.model_name)
         # determine the cache path for this configuration
         cache_path = self.cache_dir / f"dense_{cache_key}.joblib"
 
