@@ -230,10 +230,12 @@ BASELINE_METHODS = {
     "bm25": {
         "builder": lambda args: BM25Baseline(),
         "label": "BM25",
+        "include_labels": False,
     },
     "dense": {
         "builder": lambda args: DenseEmbeddingBaseline(model_name=args.embedding_model),
         "label": "DenseEmbedding",
+        "include_labels": False,
     },
 }
 
@@ -244,6 +246,7 @@ EXPERIMENTAL_METHODS = {
             metadata_boost=getattr(args, "metadata_boost", 2.0), first_stage_k=100
         ),
         "label": "MetadataAware",
+        "include_labels": True,
     },
 }
 
@@ -255,6 +258,10 @@ EXPERIMENTAL_METHODS = {
 
 def main():
     args = parse_args()
+
+    use_cache = args.sample_size is None and not args.debug
+    if not use_cache:
+        logger.info("Caching disabled (sample_size / debug mode active)")
 
     # Create output directory
     Path(args.output_path).parent.mkdir(parents=True, exist_ok=True)
@@ -291,8 +298,12 @@ def main():
     logger.info("=" * 80)
     baseline_config = BASELINE_METHODS[args.baseline]
     baseline_method = baseline_config["builder"](args)
-    baseline_method.build_index(documents)
-    runner.run_method(baseline_config["label"], baseline_method)
+    runner.run_method(
+        baseline_config["label"],
+        baseline_method,
+        include_labels=baseline_config["include_labels"],
+        use_cache=use_cache,
+    )
 
     # Run experimental methods
     logger.info("\n" + "=" * 80)
@@ -301,10 +312,13 @@ def main():
     for method_key in args.methods:
         method_config = EXPERIMENTAL_METHODS[method_key]
         method = method_config["builder"](args)
-        method.build_index(documents, include_labels=True)
-        runner.run_method(method_config["label"], method)
+        runner.run_method(
+            method_config["label"],
+            method,
+            include_labels=method_config["include_labels"],
+            use_cache=use_cache,
+        )
 
-    # Print and save results
     runner.print_results()
     runner.print_comparison_summary(baseline_config["label"])
     runner.save_results(args.output_path)
