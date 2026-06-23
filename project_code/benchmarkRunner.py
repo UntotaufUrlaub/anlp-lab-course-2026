@@ -63,7 +63,7 @@ class BenchmarkRunner:
 
             query_doc = self.documents[query_id]
             query_text = prepare_text(
-                query_doc, include_title=True, include_labels=False
+                query_doc, include_title=True, include_categorical=False, include_hierarchical=False
             )
 
             # Extract metadata from query document for metadata-aware methods

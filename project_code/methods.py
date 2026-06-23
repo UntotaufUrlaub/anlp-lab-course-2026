@@ -8,10 +8,15 @@ from abc import ABC, abstractmethod
 from typing import Dict, List, Tuple
 
 import numpy as np
+import joblib
+import hashlib
+import json
+import torch
 
 # try:
 from rank_bm25 import BM25Okapi
 from sentence_transformers import SentenceTransformer
+from pathlib import Path
 
 # except ImportError:
 # import subprocess
@@ -24,9 +29,8 @@ from sentence_transformers import SentenceTransformer
 
 logger = logging.getLogger(__name__)
 
-
 def prepare_text(
-    doc: Dict, include_title: bool = True, include_labels: bool = False
+    doc: Dict, include_title: bool = True, include_hierarchical: bool = False, include_categorical: bool = False
 ) -> str:
     """Prepare document text for retrieval."""
     text_parts = []
@@ -34,9 +38,18 @@ def prepare_text(
     if include_title and doc.get("title"):
         text_parts.append(doc["title"])
 
-    if include_labels:
+    if include_categorical:
         structured = doc.get("structured_fields", {})
         categorical = structured.get("categorical", {})
+        for key, values in categorical.items():
+            if isinstance(values, list):
+                text_parts.append(" ".join(values))
+            else:
+                text_parts.append(str(values))
+
+    if include_hierarchical:
+        structured = doc.get("structured_fields", {})
+        categorical = structured.get("hierarchical", {})
         for key, values in categorical.items():
             if isinstance(values, list):
                 text_parts.append(" ".join(values))
@@ -48,12 +61,48 @@ def prepare_text(
 
     return " ".join(text_parts)
 
+# create hash function to create a bm25 and dense embedding index depending on configuration of dataset
+# to later load with joblib efficiently
+def make_cache_key(documents: Dict, method:str,
+                   include_categorical: bool = False, include_hierarchical: bool=False,) -> str:
+    """Create a stable hash for the BM25 index input."""
+    hasher = hashlib.sha256()
+
+    config = {
+        "method": method,
+        "include_categorical": include_categorical,
+        "include_hierarchical": include_hierarchical,
+        "num_documents": len(documents),
+    }
+    hasher.update(json.dumps(config, sort_keys=True).encode("utf-8"))
+
+    for doc_id in sorted(documents.keys()):
+        doc = documents[doc_id]
+
+        relevant_data = {
+            "id": doc_id,
+            "title": doc.get("title"),
+            "main_text": doc.get("main_text"),
+        }
+
+        if include_categorical:
+            relevant_data["categorical"] = doc.get("structured_fields").get("categorical")
+        if include_hierarchical:
+            relevant_data["hierarchical"] = doc.get("structured_fields").get("hierarchical")
+
+        hasher.update(
+            json.dumps(relevant_data, sort_keys=True, default=str).encode("utf-8")
+        )
+
+    return hasher.hexdigest()[:12]
+
 
 class BaseMethod(ABC):
     """Base class that all retrieval methods must derive from."""
 
     @abstractmethod
-    def build_index(self, documents: Dict, include_labels: bool = False) -> None:
+    def build_index(self, documents: Dict, include_hierarchical: bool = False, include_categorical: bool=False)\
+            -> None:
         raise NotImplementedError
 
     @abstractmethod
@@ -62,26 +111,64 @@ class BaseMethod(ABC):
 
 
 class BM25Baseline(BaseMethod):
-    """BM25 lexical retrieval method."""
+    """BM25 lexical retrieval method with joblib caching."""
 
-    def __init__(self):
+    def __init__(self, cache_dir: str = "cache"):
         self.bm25 = None
         self.corpus = []
         self.doc_ids = []
+        self.cache_dir = Path(cache_dir)
 
-    def build_index(self, documents: Dict, include_labels: bool = False) -> None:
+    def build_index(self, documents: Dict, include_hierarchical: bool = False, include_categorical: bool = False) \
+            -> None:
+        # create unique cache_key for this document configuration
+        cache_key = make_cache_key(documents, method = "bm25", include_hierarchical=include_hierarchical,
+                                        include_categorical=include_categorical)
+        # determine the cache path for this configuration
+        cache_path = self.cache_dir / f"bm25_{cache_key}.joblib"
+
+        # if the cache_path exists we load it
+        if cache_path.exists():
+            logger.info(f"Loading BM25 index from cache: {cache_path}")
+            cache = joblib.load(cache_path)
+
+            self.bm25 = cache["bm25"]
+            self.corpus = cache["corpus"]
+            self.doc_ids = cache["doc_ids"]
+
+            logger.info(f"Loaded BM25 index with {len(self.corpus)} documents")
+            return
+
+        # build the index
         logger.info("Building BM25 index...")
         self.corpus = []
         self.doc_ids = []
 
         for doc_id, doc in documents.items():
-            text = prepare_text(doc, include_title=True, include_labels=include_labels)
+            text = prepare_text(doc, include_title=True,
+                                include_hierarchical=include_hierarchical,
+                                include_categorical=include_categorical)
             tokens = text.lower().split()
             self.corpus.append(tokens)
             self.doc_ids.append(doc_id)
 
         self.bm25 = BM25Okapi(self.corpus)
+
+        # save it to the cache path
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        joblib.dump(
+            {
+                "bm25": self.bm25,
+                "corpus": self.corpus,
+                "doc_ids": self.doc_ids,
+                "include_hierarchical": include_hierarchical,
+                "include_categorical": include_categorical,
+                "cache_key": cache_key,
+            },
+            cache_path,
+        )
         logger.info(f"BM25 index built with {len(self.corpus)} documents")
+        logger.info(f"Saved BM25 index to cache: {cache_path}")
 
     def retrieve(self, query: str, top_k: int = 10) -> List[Tuple[str, float]]:
         query_tokens = query.lower().split()
@@ -93,14 +180,37 @@ class BM25Baseline(BaseMethod):
 class DenseEmbeddingBaseline(BaseMethod):
     """Dense embedding retrieval method using Sentence Transformers."""
 
-    def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
+    def __init__(self, model_name: str = "all-MiniLM-L6-v2", cache_dir: str = "cache"):
         logger.info(f"Loading Sentence Transformer model: {model_name}")
-        self.model = SentenceTransformer(model_name)
+        # include gpu if possible for speed up
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.model = SentenceTransformer(model_name, device=device)
         logger.info(f"Sentence Transformer model loaded: {model_name}")
+        logger.info(f"Using device: {device}")
+
         self.embeddings = []
         self.doc_ids = []
+        self.cache_dir = Path(cache_dir)
 
-    def build_index(self, documents: Dict, include_labels: bool = False) -> None:
+    def build_index(self, documents: Dict, include_hierarchical: bool = False, include_categorical: bool = False)\
+            -> None:
+        # create unique cache_key for this document configuration
+        cache_key = make_cache_key(documents, include_hierarchical=include_hierarchical,
+                                        include_categorical=include_categorical, method="dense")
+        # determine the cache path for this configuration
+        cache_path = self.cache_dir / f"dense_{cache_key}.joblib"
+
+        # if the cache_path exists we load it
+        if cache_path.exists():
+            logger.info(f"Loading dense index from cache: {cache_path}")
+            cache = joblib.load(cache_path)
+
+            self.embeddings = cache["embeddings"]
+            self.doc_ids = cache["doc_ids"]
+
+            logger.info(f"Loaded dense index with {len(self.embeddings)} embeddings")
+            return
+
         logger.info("Building embedding index...")
         self.embeddings = []
         self.doc_ids = []
@@ -108,13 +218,27 @@ class DenseEmbeddingBaseline(BaseMethod):
         doc_list = list(documents.items())
         texts = []
         for doc_id, doc in doc_list:
-            text = prepare_text(doc, include_title=True, include_labels=include_labels)
+            text = prepare_text(doc, include_title=True, include_categorical=include_categorical,
+                                include_hierarchical=include_hierarchical)
             texts.append(text)
             self.doc_ids.append(doc_id)
 
         logger.info(f"Encoding {len(texts)} documents...")
         self.embeddings = self.model.encode(
             texts, batch_size=32, show_progress_bar=True, convert_to_numpy=True
+        )
+
+        # save it to the cache path
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        joblib.dump(
+            {
+                "embeddings": self.embeddings,
+                "doc_ids": self.doc_ids,
+                "include_hierarchical": include_hierarchical,
+                "include_categorical": include_categorical,
+                "cache_key": cache_key,
+            },
+            cache_path,
         )
         logger.info(f"Embedding index built with {len(self.embeddings)} documents")
 

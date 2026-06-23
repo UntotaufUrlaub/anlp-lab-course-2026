@@ -11,12 +11,12 @@ def create_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--docs-path",
-        default="output/documents_enriched_03.jsonl",
+        default="project_datasets/output/documents_enriched_03.jsonl",
         help="Path to documents JSONL file",
     )
     parser.add_argument(
         "--qrels-path",
-        default="output/qrels_enriched_02.jsonl",
+        default="project_datasets/output/qrels_enriched_02.jsonl",
         help="Path to qrels JSONL file",
     )
     parser.add_argument(
@@ -74,7 +74,7 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--methods",
         nargs="+",
-        default=["metadata_aware"],
+        default=[],
         choices=["metadata_aware"],
         help="Experimental methods to benchmark against baseline. Available: metadata_aware",
     )
