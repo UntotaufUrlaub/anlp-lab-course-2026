@@ -18,8 +18,6 @@ from rank_bm25 import BM25Okapi
 from sentence_transformers import SentenceTransformer
 from pathlib import Path
 
-from torchgen.api import structured
-
 # except ImportError:
 # import subprocess
 
@@ -259,7 +257,7 @@ class DenseEmbeddingBaseline(BaseMethod):
         logger.info(f"Embedding index built with {len(self.embeddings)} documents")
 
     def retrieve(self, query: str, top_k: int = 10) -> List[Tuple[str, float]]:
-        query_embedding = self.model.encode(query, convert_to_numpy=True)
+        query_embedding = self.model.encode(query, convert_to_numpy=True, show_progress_bar=False)
         similarities = np.dot(self.embeddings, query_embedding) / (
             np.linalg.norm(self.embeddings, axis=1) * np.linalg.norm(query_embedding)
         )
@@ -277,7 +275,8 @@ class MetadataAwareMethod(BaseMethod):
         metadata_boost: float = 2.0,
         first_stage_k: int = None,
     ):
-        self.model = SentenceTransformer(model_name)
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.model = SentenceTransformer(model_name, device=device)
         self.metadata_boost = metadata_boost
         self.first_stage_k = first_stage_k
 
@@ -285,17 +284,30 @@ class MetadataAwareMethod(BaseMethod):
         self.agg_embeddings = None  # (N, D) for first-stage
         self.field_embeddings = {}  # {field: (N, D)} for reranking
 
+    def _as_text_list(self,value):
+        if value is None:
+            return []
+        if isinstance(value, list):
+            return [str(v) for v in value if v]
+        if isinstance(value, dict):
+            items = []
+            for v in value.values():
+                items.extend(self._as_text_list(v))
+            return items
+        return [str(value)]
+
     def _extract_fields(self, doc: Dict) -> Dict[str, str]:
         structured = doc.get("structured_fields", {}) or {}
         categorical = structured.get("categorical", {}) or {}
-        hierarchical = structured.get("hierarchical", []) or []
+        hierarchical = structured.get("hierarchical", {}) or {}
+        if isinstance(categorical, dict):
+            fields_of_study = categorical.get("fields_of_study", [])
+            metadata_parts = self._as_text_list(fields_of_study)
+        else:
+            metadata_parts = self._as_text_list(categorical)
 
-        fields_of_study = categorical.get("fields_of_study", [])
-        metadata_parts = (
-            fields_of_study
-            if isinstance(fields_of_study, list)
-            else [str(fields_of_study)]
-        ) + [v for v in hierarchical if v]
+        metadata_parts += self._as_text_list(hierarchical)
+
         return {
             "metadata": " ".join(metadata_parts),
             "title": doc.get("title") or "",
