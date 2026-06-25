@@ -4,7 +4,9 @@ This module defines the base method contract and current retrieval methods.
 """
 
 import logging
+import pickle
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import Dict, List, Tuple
 
 import numpy as np
@@ -120,6 +122,17 @@ class BaseMethod(ABC):
     @abstractmethod
     def retrieve(self, query: str, top_k: int = 100) -> List[Tuple[str, float]]:
         raise NotImplementedError
+
+    def cache_key(self) -> str:
+        """Filename stem used for the cache file. Defaults to the class name."""
+        return type(self).__name__
+
+    def save_cache(self, cache_dir: Path) -> None:
+        """Persist index to disk. No-op by default."""
+
+    def load_cache(self, cache_dir: Path) -> bool:
+        """Load index from disk. Return True on hit, False on miss. No-op by default."""
+        return False
 
 
 class BM25Baseline(BaseMethod):
@@ -265,9 +278,11 @@ class DenseEmbeddingBaseline(BaseMethod):
         return [(self.doc_ids[i], float(similarities[i])) for i in top_k_indices]
 
 
-# TODO hierarchical data wehen real available somehow
 class MetadataAwareMethod(BaseMethod):
     """Metadata-aware retrieval with weighted field aggregation and optional two-stage reranking."""
+
+    # Fields pickled to / restored from cache
+    _CACHE_FIELDS = ("doc_ids", "agg_embeddings", "field_embeddings")
 
     def __init__(
         self,
@@ -330,14 +345,33 @@ class MetadataAwareMethod(BaseMethod):
         # Encode each field as a batch
         for field in field_weights:
             texts = [f[field] for f in all_fields]
-            self.field_embeddings[field] = self._encode(texts)  # (N, D)
+            self.field_embeddings[field] = self._encode(texts)
 
         # Aggregated embedding: weighted average over fields
         total_weight = sum(field_weights.values())
         self.agg_embeddings = (
             sum(w * self.field_embeddings[f] for f, w in field_weights.items())
             / total_weight
-        )  # (N, D)
+        )
+
+    def save_cache(self, cache_dir: Path) -> None:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        path = cache_dir / f"{self.cache_key()}.pkl"
+        payload = {field: getattr(self, field) for field in self._CACHE_FIELDS}
+        with open(path, "wb") as f:
+            pickle.dump(payload, f)
+        logger.info(f"Cache saved: {path}")
+
+    def load_cache(self, cache_dir: Path) -> bool:
+        path = cache_dir / f"{self.cache_key()}.pkl"
+        if not path.exists():
+            return False
+        with open(path, "rb") as f:
+            payload = pickle.load(f)
+        for field, value in payload.items():
+            setattr(self, field, value)
+        logger.info(f"Cache loaded: {path} ({len(self.doc_ids)} docs)")
+        return True
 
     def retrieve(
         self, query: str, top_k: int = 10, **kwargs

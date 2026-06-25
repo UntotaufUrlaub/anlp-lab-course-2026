@@ -1,5 +1,6 @@
 import logging
-from typing import Dict, List
+from pathlib import Path
+from typing import Dict, List, Optional
 from tqdm import tqdm
 import numpy as np
 import json
@@ -19,6 +20,8 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+_CACHE_DIR = Path(__file__).parent / "cache"
+
 
 class BenchmarkRunner:
     """Run benchmarks on retrieval methods."""
@@ -29,24 +32,36 @@ class BenchmarkRunner:
         qrels: Dict,
         k_values: List[int] = [10],
         debug: bool = False,
+        cache_dir: Optional[Path] = None,
     ):
         self.documents = documents
         self.qrels = qrels
         self.k_values = k_values
         self.results = {}
         self.debug = debug
+        self.cache_dir = Path(cache_dir) if cache_dir else _CACHE_DIR
 
-    def run_method(self, method_name: str, method: BaseMethod) -> Dict:
+    def run_method(
+        self,
+        method_name: str,
+        method: BaseMethod,
+        include_labels: bool = False,
+        use_cache: bool = True,
+    ) -> Dict:
         """
-        Run a single method on all queries.
+        Build index (with optional caching) then run a single method on all queries.
 
         Args:
         - method_name: Name of the method
-        - method: Retrieval method object with retrieve() method
+        - method: Retrieval method instance
+        - include_labels: Passed to build_index
+        - use_cache: Try to load a cached index; save one after building
 
         Returns:
         - Dictionary with aggregated metrics
         """
+        self._prepare_index(method, include_labels=include_labels, use_cache=use_cache)
+
         logger.info(f"\n{'=' * 60}")
         logger.info(f"Running {method_name}...")
         logger.info(f"{'=' * 60}")
@@ -125,6 +140,26 @@ class BenchmarkRunner:
         self.results[method_name] = aggregated
 
         return aggregated
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _prepare_index(
+        self, method: BaseMethod, include_labels: bool, use_cache: bool
+    ) -> None:
+        """Load cached index or build from scratch, then optionally save."""
+        if use_cache and method.load_cache(self.cache_dir):
+            logger.info(
+                f"[{type(method).__name__}] Index loaded from cache, skipping build_index"
+            )
+            return
+
+        logger.info(f"[{type(method).__name__}] Building index...")
+        method.build_index(self.documents, include_labels=include_labels)
+
+        if use_cache:
+            method.save_cache(self.cache_dir)
 
     def _aggregate_metrics(self, query_metrics: List[Dict]) -> Dict:
         """Aggregate metrics across all queries."""
@@ -212,7 +247,6 @@ class BenchmarkRunner:
 
             improvements = []
             degradations = []
-            no_change = []
 
             for metric_name in sorted(metric_names):
                 if metric_name not in method_metrics:
@@ -220,48 +254,36 @@ class BenchmarkRunner:
 
                 baseline_value = baseline_metrics[metric_name]
                 method_value = method_metrics[metric_name]
+                pct_change = (
+                    ((method_value - baseline_value) / baseline_value) * 100
+                    if baseline_value != 0
+                    else 0
+                )
 
-                # Calculate percentage change
-                if baseline_value != 0:
-                    pct_change = (
-                        (method_value - baseline_value) / baseline_value
-                    ) * 100
-                else:
-                    pct_change = 0
-
-                # Format output
                 metric_display = metric_name.replace("_mean", "")
                 symbol = "↑" if pct_change > 0 else "↓" if pct_change < 0 else "→"
-                color_code = (
-                    "\033[92m"
-                    if pct_change > 0
-                    else "\033[91m" if pct_change < 0 else ""
+                print(
+                    f"  {metric_display:25s}: {method_value:.4f} "
+                    f"(baseline: {baseline_value:.4f}) {symbol} {pct_change:+.2f}%"
                 )
-                reset_code = "\033[0m"
-
-                output = f"  {metric_display:25s}: {method_value:.4f} (baseline: {baseline_value:.4f}) {symbol} {pct_change:+.2f}%"
-
-                print(output)
 
                 if pct_change > 0:
-                    improvements.append((metric_display, pct_change))
+                    improvements.append(pct_change)
                 elif pct_change < 0:
-                    degradations.append((metric_display, pct_change))
-                else:
-                    no_change.append(metric_display)
+                    degradations.append(pct_change)
 
             # Summary statistics
             if improvements or degradations:
                 print("\n  Summary:")
                 if improvements:
-                    avg_improvement = np.mean([p[1] for p in improvements])
                     print(
-                        f"    ✓ Improved {len(improvements)}/{len(metric_names)} metrics (avg: {avg_improvement:+.2f}%)"
+                        f"    ✓ Improved {len(improvements)}/{len(metric_names)} metrics "
+                        f"(avg: {np.mean(improvements):+.2f}%)"
                     )
                 if degradations:
-                    avg_degradation = np.mean([d[1] for d in degradations])
                     print(
-                        f"    ✗ Degraded {len(degradations)}/{len(metric_names)} metrics (avg: {avg_degradation:+.2f}%)"
+                        f"    ✗ Degraded {len(degradations)}/{len(metric_names)} metrics "
+                        f"(avg: {np.mean(degradations):+.2f}%)"
                     )
 
         print("\n" + "=" * 80)
