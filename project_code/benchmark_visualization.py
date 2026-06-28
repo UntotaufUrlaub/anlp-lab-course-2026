@@ -5,6 +5,10 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 
 
+PROJECT_ROOT = Path(__file__).resolve().parent
+RESULTS_DIR = PROJECT_ROOT / "results"
+VISUALIZATION_DIR = RESULTS_DIR / "visualizations"
+
 def _as_list(value):
     if isinstance(value, (str, Path)):
         return [value]
@@ -15,7 +19,7 @@ def _load_result_file(result_file):
     path = Path(result_file)
 
     if not path.is_absolute():
-        path = Path.cwd() / path
+        path = RESULTS_DIR / path
 
     if not path.exists():
         raise FileNotFoundError(f"Result file not found: {path}")
@@ -97,13 +101,13 @@ def _selected_metrics(results_by_method, description):
     return metrics
 
 
-def visualize_comparison(input_results, description: dict):
+def visualize_bar_chart(input_results, description: dict, sameMethod:bool=False):
     """
     Create a grouped bar chart comparing benchmark methods across metrics.
 
     Args:
         input_results: One result JSON file path, or an iterable of result JSON file paths.
-            Each file should contain top-level method names and metric dictionaries.
+            Each file should contain top-level method names and metric dictionaries. Only enter the file name.
         description: Parameters used for the benchmark run, e.g.
             {"k": [10, 50], "batchsize": 500, "seed": 42, "documentsize": 10000}.
 
@@ -125,7 +129,7 @@ def visualize_comparison(input_results, description: dict):
                 continue
 
             # Skip duplicates
-            if method_name in results_by_method:
+            if not sameMethod and method_name in results_by_method:
                 continue
 
             label = method_name
@@ -141,7 +145,7 @@ def visualize_comparison(input_results, description: dict):
     if not metrics:
         raise ValueError("No numeric '*_mean' metrics found to visualize.")
 
-    output_dir = Path.cwd() / "results" / "visualizations"
+    output_dir = VISUALIZATION_DIR
     output_dir.mkdir(parents=True, exist_ok=True)
 
     method_names = list(results_by_method.keys())
@@ -197,14 +201,13 @@ def visualize_comparison(input_results, description: dict):
 
 if __name__ == "__main__":
     description = {
-        "k": [10, 50, 100],
+        "k": [2,5,10],
         "batchsize": 500,
         "seed": 42,
         "documentsize": "all",
         "hierarchical": False,
         "categorical": False,
     }
-    visualize_comparison(["results/bm25_batchsize500_k10_50_100_seed42.json",
-                         "results/dense_batchsize500_k10_50_100_seed42.json",
-                          "results/method_results.json"],
+    visualize_bar_chart(["dense_batchsize500_k2_5_10_seed42categoricalhierarchical.json",
+                         "dense_batchsize500_k2_5_10_seed42.json"],
                          description)

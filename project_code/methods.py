@@ -26,10 +26,23 @@ from pathlib import Path
 # subprocess.check_call(
 #     ["pip", "install", "rank-bm25", "sentence-transformers", "scikit-learn"]
 # )
-# from rank_bm25 import BM25Okapi
-# from sentence_transformers import SentenceTransformer
-
 logger = logging.getLogger(__name__)
+
+PROJECT_ROOT = Path(__file__).resolve().parent
+CACHE_DIR = PROJECT_ROOT / "cache"
+
+# helper method to rewrite text format into one nice string
+def _as_text_list(value):
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(v) for v in value if v]
+    if isinstance(value, dict):
+        items = []
+        for v in value.values():
+            items.extend(_as_text_list(v))
+        return items
+    return [str(value)]
 
 def prepare_text(
     doc: Dict, include_title: bool = True, include_hierarchical: bool = False, include_categorical: bool = False
@@ -40,23 +53,16 @@ def prepare_text(
     if include_title and doc.get("title"):
         text_parts.append(doc["title"])
 
+    structured = doc.get("structured_fields") or {}
+
     if include_categorical:
-        structured = doc.get("structured_fields", {})
-        categorical = structured.get("categorical", {})
-        for key, values in categorical.items():
-            if isinstance(values, list):
-                text_parts.append(" ".join(values))
-            else:
-                text_parts.append(str(values))
+        categorical = structured.get("categorical")
+        text_parts.append(" ".join(_as_text_list(categorical)))
+
 
     if include_hierarchical:
-        structured = doc.get("structured_fields", {})
-        hierarchical = structured.get("hierarchical", {})
-        for key, values in hierarchical.items():
-            if isinstance(values, list):
-                text_parts.append(" ".join(values))
-            else:
-                text_parts.append(str(values))
+        hierarchical = structured.get("hierarchical")
+        text_parts.append(" ".join(_as_text_list(hierarchical)))
 
     if doc.get("main_text"):
         text_parts.append(doc["main_text"])
@@ -138,11 +144,11 @@ class BaseMethod(ABC):
 class BM25Baseline(BaseMethod):
     """BM25 lexical retrieval method with joblib caching."""
 
-    def __init__(self, cache_dir: str = "cache"):
+    def __init__(self):
         self.bm25 = None
         self.corpus = []
         self.doc_ids = []
-        self.cache_dir = Path(cache_dir)
+        self.cache_dir = CACHE_DIR
 
     def build_index(self, documents: Dict, include_hierarchical: bool = False, include_categorical: bool = False) \
             -> None:
@@ -205,7 +211,7 @@ class BM25Baseline(BaseMethod):
 class DenseEmbeddingBaseline(BaseMethod):
     """Dense embedding retrieval method using Sentence Transformers."""
 
-    def __init__(self, model_name: str = "all-MiniLM-L6-v2", cache_dir: str = "cache"):
+    def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
         logger.info(f"Loading Sentence Transformer model: {model_name}")
         # include gpu if possible for speed up
         device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -216,7 +222,7 @@ class DenseEmbeddingBaseline(BaseMethod):
 
         self.embeddings = []
         self.doc_ids = []
-        self.cache_dir = Path(cache_dir)
+        self.cache_dir = CACHE_DIR
 
     def build_index(self, documents: Dict, include_hierarchical: bool = False, include_categorical: bool = False)\
             -> None:

@@ -69,7 +69,7 @@ def create_parser() -> argparse.ArgumentParser:
         "--baseline",
         default="bm25",
         choices=["bm25", "dense"],
-        help="Baseline method to use for comparison (default: bm25). Available: bm25, dense",
+        help="Baseline method to use for comparison (default: bm25). Available: bm25, dense"
     )
     parser.add_argument(
         "--methods",
@@ -78,6 +78,13 @@ def create_parser() -> argparse.ArgumentParser:
         choices=["metadata_aware"],
         help="Experimental methods to benchmark against baseline. Available: metadata_aware",
     )
+    parser.add_argument(
+        "--include-categorical",
+        action="store_true")
+
+    parser.add_argument(
+        "--include-hierarchical",
+        action="store_true")
 
     return parser
 

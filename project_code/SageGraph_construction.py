@@ -116,8 +116,9 @@ def add_or_update_edge(graph, source_id, target_id, relation, weight):
         relation=relation,
         weight=weight,
     )
+#----------------------- adding function --------------------------------------------------------------------------
 
-
+# add one node per paper_entry/github_entry to the graph
 def add_document_nodes(graph, entries, text_attribute="main_text"):
     entry_ids = set()
 
@@ -146,7 +147,7 @@ def add_document_nodes(graph, entries, text_attribute="main_text"):
 
     return entry_ids
 
-
+# add related edges
 def add_explicit_relation_edges(graph, entries, valid_ids, relation, weight=1.0):
     edge_count = 0
 
@@ -281,7 +282,10 @@ class PaperGraph(SAGEGraph):
         # 1. make document nodes
         paper_ids = add_document_nodes(self.graph, paper_entries, text_attribute="abstract")
 
-        logger.info(f"Building graph citation relations with {len(paper_ids)} papers...")
+        logger.info(f"Built {len(paper_ids)} paper_graph nodes.")
+
+        # 2. make citation relation edges with normal weight 1.0
+        logger.info(f"\nBuilding graph citation relations with {len(paper_ids)} papers...")
 
         # 2. add relation edges
         citation_edges = add_explicit_relation_edges(

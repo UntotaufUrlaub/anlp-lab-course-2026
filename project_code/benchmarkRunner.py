@@ -45,7 +45,8 @@ class BenchmarkRunner:
         self,
         method_name: str,
         method: BaseMethod,
-        include_labels: bool = False,
+        include_categorical: bool=False,
+        include_hierarchical: bool=False,
         use_cache: bool = True,
     ) -> Dict:
         """
@@ -60,7 +61,8 @@ class BenchmarkRunner:
         Returns:
         - Dictionary with aggregated metrics
         """
-        self._prepare_index(method, include_labels=include_labels, use_cache=use_cache)
+        self._prepare_index(method, include_categorical=include_categorical,
+                            include_hierarchical=include_hierarchical, use_cache=use_cache)
 
         logger.info(f"\n{'=' * 60}")
         logger.info(f"Running {method_name}...")
@@ -146,7 +148,7 @@ class BenchmarkRunner:
     # ------------------------------------------------------------------
 
     def _prepare_index(
-        self, method: BaseMethod, include_labels: bool, use_cache: bool
+        self, method: BaseMethod, include_categorical:bool, include_hierarchical:bool, use_cache: bool
     ) -> None:
         """Load cached index or build from scratch, then optionally save."""
         if use_cache and method.load_cache(self.cache_dir):
@@ -156,7 +158,8 @@ class BenchmarkRunner:
             return
 
         logger.info(f"[{type(method).__name__}] Building index...")
-        method.build_index(self.documents, include_labels=include_labels)
+        method.build_index(self.documents, include_categorical=include_categorical,
+                           include_hierarchical=include_hierarchical)
 
         if use_cache:
             method.save_cache(self.cache_dir)

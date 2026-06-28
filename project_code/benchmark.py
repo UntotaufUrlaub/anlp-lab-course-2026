@@ -227,24 +227,26 @@ BASELINE_METHODS = {
     "bm25": {
         "builder": lambda args: BM25Baseline(),
         "label": "BM25",
-        "include_labels": False,
     },
     "dense": {
         "builder": lambda args: DenseEmbeddingBaseline(model_name=args.embedding_model),
         "label": "DenseEmbedding",
-        "include_labels": False,
     },
 }
 
 # Experimental methods to compare against baseline
+
 EXPERIMENTAL_METHODS = {
+    # MetadataAware is defined as a metadata-based method, so it always
+    # uses categorical and hierarchical information regardless of CLI flags.
     "metadata_aware": {
         "builder": lambda args: MetadataAwareMethod(
             metadata_boost=getattr(args, "metadata_boost", 2.0), first_stage_k=100
         ),
         "label": "MetadataAware",
-        "include_labels": True,
-    },
+        "include_categorical": True,
+        "include_hierarchical":True
+    }
 }
 
 
@@ -298,7 +300,8 @@ def main():
     runner.run_method(
         baseline_config["label"],
         baseline_method,
-        include_labels=baseline_config["include_labels"],
+        include_categorical=args.include_categorical,
+        include_hierarchical=args.include_hierarchical,
         use_cache=use_cache,
     )
 
@@ -312,7 +315,8 @@ def main():
         runner.run_method(
             method_config["label"],
             method,
-            include_labels=method_config["include_labels"],
+            include_hierarchical=method_config["include_hierarchical"],
+            include_categorical=method_config["include_categorical"],
             use_cache=use_cache,
         )
 
