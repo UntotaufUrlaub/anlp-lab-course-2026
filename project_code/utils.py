@@ -74,9 +74,9 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--methods",
         nargs="+",
-        default=["dense++", "metadata_aware"],
-        choices=["metadata_aware, dense++"],
-        help="Experimental methods to benchmark against baseline. Available: dense++, metadata_aware",
+        default=["whitened++"],
+        choices=["metadata_aware, dense_labels, charm, whitened++"],
+        help="Experimental methods to benchmark against baseline. Available: dense_labels, metadata_aware, charm, whitened++",
     )
 
     return parser
@@ -124,7 +124,6 @@ def extract_metadata_text(doc: Dict) -> str:
             parts.append(str(v))
 
     parts += _flatten_hierarchical(hierarchical)
-    print(parts)
     return " ".join(parts)
 
 

@@ -25,6 +25,8 @@ try:
         BM25Baseline,
         DenseEmbeddingBaseline,
         MetadataAwareMethod,
+        CHARMInspiredMethod,
+        WhitenedDenseMethod,
     )
     from utils import parse_args, _flatten_hierarchical
     from benchmarkRunner import BenchmarkRunner
@@ -33,6 +35,8 @@ except ImportError:
         BM25Baseline,
         DenseEmbeddingBaseline,
         MetadataAwareMethod,
+        CHARMInspiredMethod,
+        WhitenedDenseMethod,
     )
     from project_code.utils import parse_args, _flatten_hierarchical
     from project_code.benchmarkRunner import BenchmarkRunner
@@ -269,7 +273,7 @@ BASELINE_METHODS = {
 
 # Experimental methods to compare against baseline
 EXPERIMENTAL_METHODS = {
-    "dense++": {
+    "dense_labels": {
         "builder": lambda args: DenseEmbeddingBaseline(
             model_name=args.embedding_model,
             include_labels=True,
@@ -279,6 +283,13 @@ EXPERIMENTAL_METHODS = {
     "metadata_aware": {
         "builder": lambda args: MetadataAwareMethod(),
         "label": "BetterMetaDataAwareness",
+    },
+    "charm": {"builder": lambda args: CHARMInspiredMethod(), "label": "charm"},
+    "whitened++": {
+        "builder": lambda args: WhitenedDenseMethod(
+            model_name=args.embedding_model, include_labels=True
+        ),
+        "label": "Whitened-Dense+Labels",
     },
 }
 

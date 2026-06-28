@@ -289,10 +289,6 @@ class BenchmarkRunner:
                         f"    ✗ Degraded {size_degrads}/{size_metrics} metrics "
                         f"(avg: {np.mean(degradations):+.2f}%)"
                     )
-                else:
-                    print(
-                        f"    O SAME {size_metrics-size_degrads-size_improvs}/{size_metrics} metrics "
-                    )
 
         print("\n" + "=" * 80)
 
