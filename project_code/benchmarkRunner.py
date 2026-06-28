@@ -272,18 +272,26 @@ class BenchmarkRunner:
                 elif pct_change < 0:
                     degradations.append(pct_change)
 
+            size_improvs = len(improvements)
+            size_degrads = len(degradations)
+            size_metrics = len(metric_names)
+
             # Summary statistics
             if improvements or degradations:
                 print("\n  Summary:")
                 if improvements:
                     print(
-                        f"    ✓ Improved {len(improvements)}/{len(metric_names)} metrics "
+                        f"    ✓ Improved {size_improvs}/{size_metrics} metrics "
                         f"(avg: {np.mean(improvements):+.2f}%)"
                     )
                 if degradations:
                     print(
-                        f"    ✗ Degraded {len(degradations)}/{len(metric_names)} metrics "
+                        f"    ✗ Degraded {size_degrads}/{size_metrics} metrics "
                         f"(avg: {np.mean(degradations):+.2f}%)"
+                    )
+                else:
+                    print(
+                        f"    O SAME {size_metrics-size_degrads-size_improvs}/{size_metrics} metrics "
                     )
 
         print("\n" + "=" * 80)

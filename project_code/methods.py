@@ -8,6 +8,7 @@ import pickle
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Dict, List, Tuple
+from utils import prepare_text, extract_metadata_text
 
 import numpy as np
 
@@ -25,30 +26,6 @@ from sentence_transformers import SentenceTransformer
 # from sentence_transformers import SentenceTransformer
 
 logger = logging.getLogger(__name__)
-
-
-def prepare_text(
-    doc: Dict, include_title: bool = True, include_labels: bool = False
-) -> str:
-    """Prepare document text for retrieval."""
-    text_parts = []
-
-    if include_title and doc.get("title"):
-        text_parts.append(doc["title"])
-
-    if include_labels:
-        structured = doc.get("structured_fields", {})
-        categorical = structured.get("categorical", {})
-        for key, values in categorical.items():
-            if isinstance(values, list):
-                text_parts.append(" ".join(values))
-            else:
-                text_parts.append(str(values))
-
-    if doc.get("main_text"):
-        text_parts.append(doc["main_text"])
-
-    return " ".join(text_parts)
 
 
 class BaseMethod(ABC):
@@ -106,22 +83,29 @@ class BM25Baseline(BaseMethod):
 class DenseEmbeddingBaseline(BaseMethod):
     """Dense embedding retrieval method using Sentence Transformers."""
 
-    def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
+    def __init__(
+        self, model_name: str = "all-MiniLM-L6-v2", include_labels: bool = False
+    ):
         logger.info(f"Loading Sentence Transformer model: {model_name}")
         self.model = SentenceTransformer(model_name)
         logger.info(f"Sentence Transformer model loaded: {model_name}")
         self.embeddings = []
         self.doc_ids = []
+        self.include_labels = include_labels
 
-    def build_index(self, documents: Dict, include_labels: bool = False) -> None:
-        logger.info("Building embedding index...")
+    def build_index(self, documents: Dict, **kwargs) -> None:
+        logger.info(
+            f"Building embedding index... with include_labels {self.include_labels}"
+        )
         self.embeddings = []
         self.doc_ids = []
 
         doc_list = list(documents.items())
         texts = []
         for doc_id, doc in doc_list:
-            text = prepare_text(doc, include_title=True, include_labels=include_labels)
+            text = prepare_text(
+                doc, include_title=True, include_labels=self.include_labels
+            )
             texts.append(text)
             self.doc_ids.append(doc_id)
 
@@ -141,73 +125,80 @@ class DenseEmbeddingBaseline(BaseMethod):
 
 
 class MetadataAwareMethod(BaseMethod):
-    """Metadata-aware retrieval with weighted field aggregation and optional two-stage reranking."""
+    """
+    Single-stage weighted multi-field dense retrieval.
+    Each field (metadata, title, main_text) is encoded separately,
+    then combined as a weighted sum of embeddings.
+    Answers: does metadata/hierarchy improve over text-only baselines?
+    """
 
-    # Fields pickled to / restored from cache
-    _CACHE_FIELDS = ("doc_ids", "agg_embeddings", "field_embeddings")
+    _CACHE_FIELDS = ("doc_ids", "doc_embeddings")
 
     def __init__(
         self,
         model_name: str = "all-MiniLM-L6-v2",
         metadata_boost: float = 2.0,
-        first_stage_k: int = None,
+        title_boost: float = 1.5,
     ):
         self.model = SentenceTransformer(model_name)
         self.metadata_boost = metadata_boost
-        self.first_stage_k = first_stage_k
-
+        self.title_boost = title_boost
         self.doc_ids = []
-        self.agg_embeddings = None  # (N, D) for first-stage
-        self.field_embeddings = {}  # {field: (N, D)} for reranking
+        self.doc_embeddings = None  # (N, D) final weighted embeddings
+
+    def cache_key(self) -> str:
+        return f"{type(self).__name__}_mb{self.metadata_boost}_tb{self.title_boost}"
+
+    def _field_weights(self) -> Dict[str, float]:
+        return {
+            "metadata": self.metadata_boost,
+            "title": self.title_boost,
+            "main_text": 1.0,
+        }
 
     def _extract_fields(self, doc: Dict) -> Dict[str, str]:
-        structured = doc.get("structured_fields", {}) or {}
-        categorical = structured.get("categorical", {}) or {}
-        hierarchical = structured.get("hierarchical", []) or []
-
-        fields_of_study = categorical.get("fields_of_study", [])
-        metadata_parts = (
-            fields_of_study
-            if isinstance(fields_of_study, list)
-            else [str(fields_of_study)]
-        ) + [v for v in hierarchical if v]
         return {
-            "metadata": " ".join(metadata_parts),
+            "metadata": extract_metadata_text(doc),
             "title": doc.get("title") or "",
             "main_text": doc.get("main_text") or "",
         }
 
     def _encode(self, texts: List[str]) -> np.ndarray:
-        return self.model.encode(texts, convert_to_numpy=True, show_progress_bar=False)
+        return self.model.encode(texts, convert_to_numpy=True, show_progress_bar=True)
 
     def build_index(self, documents: Dict, **kwargs) -> None:
         self.doc_ids = list(documents.keys())
         all_fields = [self._extract_fields(doc) for doc in documents.values()]
+        weights = self._field_weights()
+        total_weight = sum(weights.values())
 
-        field_weights = {
-            "metadata": self.metadata_boost,
-            "title": 2.0,
-            "main_text": 1.0,
-        }
-
-        # Encode each field as a batch
-        for field in field_weights:
+        weighted_sum = None
+        for field, w in weights.items():
             texts = [f[field] for f in all_fields]
-            self.field_embeddings[field] = self._encode(texts)
+            embs = self._encode(texts)  # (N, D)
+            weighted_sum = (
+                (weighted_sum + w * embs) if weighted_sum is not None else w * embs
+            )
 
-        # Aggregated embedding: weighted average over fields
-        total_weight = sum(field_weights.values())
-        self.agg_embeddings = (
-            sum(w * self.field_embeddings[f] for f, w in field_weights.items())
-            / total_weight
-        )
+        self.doc_embeddings = weighted_sum / total_weight  # (N, D)
+        logger.info(f"MetadataAware index built: {len(self.doc_ids)} docs")
+
+    def retrieve(
+        self, query: str, top_k: int = 10, **kwargs
+    ) -> List[Tuple[str, float]]:
+        q = self.model.encode(query, convert_to_numpy=True)
+        norms = np.linalg.norm(self.doc_embeddings, axis=1) * np.linalg.norm(q) + 1e-10
+        scores = (self.doc_embeddings @ q) / norms
+        top_indices = np.argsort(scores)[-(top_k + 1) :][::-1]
+        return [(self.doc_ids[i], float(scores[i])) for i in top_indices]
 
     def save_cache(self, cache_dir: Path) -> None:
         cache_dir.mkdir(parents=True, exist_ok=True)
         path = cache_dir / f"{self.cache_key()}.pkl"
-        payload = {field: getattr(self, field) for field in self._CACHE_FIELDS}
         with open(path, "wb") as f:
-            pickle.dump(payload, f)
+            pickle.dump(
+                {field: getattr(self, field) for field in self._CACHE_FIELDS}, f
+            )
         logger.info(f"Cache saved: {path}")
 
     def load_cache(self, cache_dir: Path) -> bool:
@@ -220,41 +211,3 @@ class MetadataAwareMethod(BaseMethod):
             setattr(self, field, value)
         logger.info(f"Cache loaded: {path} ({len(self.doc_ids)} docs)")
         return True
-
-    def retrieve(
-        self, query: str, top_k: int = 10, **kwargs
-    ) -> List[Tuple[str, float]]:
-        q = self._encode([query])[0]  # (D,)
-
-        def cosine(matrix, vec):
-            return (
-                matrix
-                @ vec
-                / (np.linalg.norm(matrix, axis=1) * np.linalg.norm(vec) + 1e-10)
-            )
-
-        top_k += 1
-        # Stage 1: shortlist via aggregated embeddings
-        k1 = self.first_stage_k or len(self.doc_ids)
-        scores = cosine(self.agg_embeddings, q)
-        shortlist = np.argsort(scores)[-k1:][::-1]
-
-        # Stage 2: rerank by max field similarity over shortlist
-        if self.first_stage_k:
-            field_scores = np.stack(
-                [
-                    cosine(self.field_embeddings[f][shortlist], q)
-                    for f in self.field_embeddings
-                ],
-                axis=1,
-            ).max(
-                axis=1
-            )  # (k1,)
-            order = np.argsort(field_scores)[-top_k:][::-1]
-            shortlist = shortlist[order]
-            scores = field_scores[order]
-        else:
-            scores = scores[shortlist[:top_k]]
-            shortlist = shortlist[:top_k]
-
-        return [(self.doc_ids[i], float(s)) for i, s in zip(shortlist, scores)]

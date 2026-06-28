@@ -26,7 +26,7 @@ try:
         DenseEmbeddingBaseline,
         MetadataAwareMethod,
     )
-    from utils import parse_args
+    from utils import parse_args, _flatten_hierarchical
     from benchmarkRunner import BenchmarkRunner
 except ImportError:
     from project_code.methods import (
@@ -34,7 +34,7 @@ except ImportError:
         DenseEmbeddingBaseline,
         MetadataAwareMethod,
     )
-    from project_code.utils import parse_args
+    from project_code.utils import parse_args, _flatten_hierarchical
     from project_code.benchmarkRunner import BenchmarkRunner
 
 # ---------------------------------------------------------------------------
@@ -52,6 +52,25 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Data Loading
 # ---------------------------------------------------------------------------
+
+
+def has_structured_fields(doc: Dict) -> bool:
+    """Return True if doc has any non-empty structured_fields content."""
+    source_type = doc.get("source_type")
+    if source_type == "query":
+        return True  # never filter queries
+
+    structured = doc.get("structured_fields", {}) or {}
+    categorical = structured.get("categorical", {}) or {}
+    hierarchical = structured.get("hierarchical", []) or []
+
+    has_categorical = any(
+        (v if not isinstance(v, (list, dict)) else any(v))
+        for v in categorical.values()
+        if v is not None
+    )
+    has_hierarchical = bool(_flatten_hierarchical(hierarchical))
+    return has_categorical or has_hierarchical
 
 
 def load_jsonl(file_path: str) -> List[Dict]:
@@ -84,6 +103,15 @@ def load_documents_and_qrels(
     docs_list = load_jsonl(docs_path)
     documents = {doc["id"]: doc for doc in docs_list}
     logger.info(f"Loaded {len(documents)} documents")
+
+    # Drop non-query docs with empty structured fields
+    before = len(documents)
+    documents = {
+        did: doc for did, doc in documents.items() if has_structured_fields(doc)
+    }
+    logger.info(
+        f"Dropped {before - len(documents)} docs with empty structured_fields ({len(documents)} remaining)"
+    )
 
     logger.info(f"Loading qrels from {qrels_path}")
     qrels_list = load_jsonl(qrels_path)
@@ -241,12 +269,16 @@ BASELINE_METHODS = {
 
 # Experimental methods to compare against baseline
 EXPERIMENTAL_METHODS = {
-    "metadata_aware": {
-        "builder": lambda args: MetadataAwareMethod(
-            metadata_boost=getattr(args, "metadata_boost", 2.0), first_stage_k=100
+    "dense++": {
+        "builder": lambda args: DenseEmbeddingBaseline(
+            model_name=args.embedding_model,
+            include_labels=True,
         ),
-        "label": "MetadataAware",
-        "include_labels": True,
+        "label": "DenseEmbedding+Labels",
+    },
+    "metadata_aware": {
+        "builder": lambda args: MetadataAwareMethod(),
+        "label": "BetterMetaDataAwareness",
     },
 }
 
@@ -315,7 +347,6 @@ def main():
         runner.run_method(
             method_config["label"],
             method,
-            include_labels=method_config["include_labels"],
             use_cache=use_cache,
         )
 

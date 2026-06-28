@@ -1,7 +1,7 @@
 """Utility functions for the benchmark script."""
 
 import argparse
-from typing import Any
+from typing import Any, Dict, List, Tuple
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -32,7 +32,7 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--metadata-boost",
         type=float,
-        default=2.0,
+        default=3.0,
         help="Boost factor applied to metadata matches in MetadataAwareMethod",
     )
     parser.add_argument(
@@ -67,16 +67,16 @@ def create_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--baseline",
-        default="bm25",
+        default="dense",
         choices=["bm25", "dense"],
-        help="Baseline method to use for comparison (default: bm25). Available: bm25, dense",
+        help="Baseline method to use for comparison (default: dense). Available: bm25, dense",
     )
     parser.add_argument(
         "--methods",
         nargs="+",
-        default=["metadata_aware"],
-        choices=["metadata_aware"],
-        help="Experimental methods to benchmark against baseline. Available: metadata_aware",
+        default=["dense++", "metadata_aware"],
+        choices=["metadata_aware, dense++"],
+        help="Experimental methods to benchmark against baseline. Available: dense++, metadata_aware",
     )
 
     return parser
@@ -93,3 +93,49 @@ def parse_args(args: Any = None) -> argparse.Namespace:
     """
     parser = create_parser()
     return parser.parse_args(args)
+
+
+def _flatten_hierarchical(hierarchical) -> List[str]:
+    if isinstance(hierarchical, list):
+        return [v for v in hierarchical if v]
+    elif isinstance(hierarchical, dict):
+        parts = []
+        for v in hierarchical.values():
+            if isinstance(v, dict):
+                parts.extend(str(x) for x in v.values() if x)
+            elif isinstance(v, list):
+                parts.extend(str(x) for x in v if x)
+            elif v:
+                parts.append(str(v))
+        return parts
+    return []
+
+
+def extract_metadata_text(doc: Dict) -> str:
+    structured = doc.get("structured_fields", {}) or {}
+    categorical = structured.get("categorical", {}) or {}
+    hierarchical = structured.get("hierarchical", []) or []
+
+    parts = []
+    for v in categorical.values():
+        if isinstance(v, list):
+            parts.extend(str(x) for x in v if x is not None)
+        elif v is not None:
+            parts.append(str(v))
+
+    parts += _flatten_hierarchical(hierarchical)
+    print(parts)
+    return " ".join(parts)
+
+
+def prepare_text(
+    doc: Dict, include_title: bool = True, include_labels: bool = False
+) -> str:
+    text_parts = []
+    if include_title and doc.get("title"):
+        text_parts.append(doc["title"])
+    if include_labels:
+        text_parts.append(extract_metadata_text(doc))
+    if doc.get("main_text"):
+        text_parts.append(doc["main_text"])
+    return " ".join(text_parts)
