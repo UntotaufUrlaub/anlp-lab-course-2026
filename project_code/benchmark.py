@@ -294,6 +294,71 @@ EXPERIMENTAL_METHODS = {
 }
 
 
+def hyperparam_search(args, documents, qrels, n_trials=20, seed=42):
+    random.seed(seed)
+
+    search_space = {
+        "metadata_boost": [0.5, 1.0, 1.5, 2.0, 3.0, 4.0],
+        "title_boost": [0.5, 1.0, 1.5, 2.0, 3.0],
+        "main_text_boost": [0.5, 1.0, 1.5, 2.0],
+    }
+
+    primary_metric = f"ndcg@{max(args.k_values)}_mean"
+    results = []
+    seen = set()
+
+    trial = 0
+    while trial < n_trials:
+        params = {k: random.choice(v) for k, v in search_space.items()}
+        key = tuple(params[k] for k in sorted(params))
+        if key in seen:
+            continue
+        seen.add(key)
+        trial += 1
+
+        logger.info(f"\nTrial {trial}/{n_trials}: {params}")
+
+        method = CHARMInspiredMethod(
+            field_weights={
+                "metadata": params["metadata_boost"],
+                "title": params["title_boost"],
+                "main_text": params["main_text_boost"],
+            },
+            first_stage_k=100,
+        )
+        label = f"CHARM_mb{params['metadata_boost']}_tb{params['title_boost']}_mt{params['main_text_boost']}"
+
+        runner = BenchmarkRunner(
+            documents,
+            qrels,
+            k_values=args.k_values,
+            debug=False,
+            cache_dir=Path(args.output_path).parent / "cache",
+        )
+        runner.run_method(label, method, use_cache=True)
+
+        score = runner.results[label].get(primary_metric, 0.0)
+        results.append(
+            {**params, "label": label, "score": score, "metrics": runner.results[label]}
+        )
+        logger.info(f"  → {primary_metric}: {score:.4f}")
+
+    results.sort(key=lambda r: r["score"], reverse=True)
+
+    print("\n" + "=" * 80)
+    print(f"HYPERPARAM SEARCH RESULTS (ranked by {primary_metric})")
+    print("=" * 80)
+    for r in results[:5]:
+        print(
+            f"  metadata={r['metadata_boost']} title={r['title_boost']} "
+            f"main_text={r['main_text_boost']} → {primary_metric}={r['score']:.4f}"
+        )
+
+    best = results[0]
+    logger.info(f"\nBest config: {best}")
+    return results
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -331,6 +396,12 @@ def main():
         documents, qrels = sample_documents(
             documents, qrels, args.sample_size, random_seed=args.seed
         )
+
+    if getattr(args, "hyperparam_search", False):
+        hyperparam_search(
+            args, documents, qrels, n_trials=args.n_trials, seed=args.seed
+        )
+        return
 
     # Initialize benchmark runner
     runner = BenchmarkRunner(documents, qrels, k_values=args.k_values, debug=args.debug)

@@ -11,6 +11,7 @@ from typing import Dict, List, Tuple
 from utils import prepare_text, extract_metadata_text
 
 import numpy as np
+from sklearn.decomposition import PCA
 
 # try:
 from rank_bm25 import BM25Okapi
@@ -236,9 +237,9 @@ class CHARMInspiredMethod(BaseMethod):
     ):
         self.model = SentenceTransformer(model_name)
         self.field_weights = field_weights or {
-            "metadata": 1.0,
-            "title": 1.0,
-            "main_text": 1.0,
+            "metadata": 2.0,
+            "title": 1.5,
+            "main_text": 0.5,
         }
         self.first_stage_k = first_stage_k
         self.doc_ids = []
@@ -303,9 +304,6 @@ class CHARMInspiredMethod(BaseMethod):
         scores = field_scores[order]
 
         return [(self.doc_ids[i], float(s)) for i, s in zip(final, scores)]
-
-
-from sklearn.decomposition import PCA
 
 
 class WhitenedDenseMethod(DenseEmbeddingBaseline):

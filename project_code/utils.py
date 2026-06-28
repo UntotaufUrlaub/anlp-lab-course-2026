@@ -74,10 +74,12 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--methods",
         nargs="+",
-        default=["whitened++"],
-        choices=["metadata_aware, dense_labels, charm, whitened++"],
+        default=["metadata_aware", "dense_labels", "charm"],
+        choices=["metadata_aware", "dense_labels", "charm", "whitened++"],
         help="Experimental methods to benchmark against baseline. Available: dense_labels, metadata_aware, charm, whitened++",
     )
+    parser.add_argument("--hyperparam-search", action="store_true")
+    parser.add_argument("--n-trials", type=int, default=20)
 
     return parser
 
