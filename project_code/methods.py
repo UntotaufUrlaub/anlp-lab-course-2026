@@ -416,3 +416,11 @@ class MetadataAwareMethod(BaseMethod):
             shortlist = shortlist[:top_k]
 
         return [(self.doc_ids[i], float(s)) for i, s in zip(shortlist, scores)]
+
+class SAGEGraphExpansionMethod(BaseMethod):
+
+    def build_index(self, documents: Dict, **kwargs) -> None:
+        pass
+
+    def retrieve(self, query: str, **kwargs) -> List[Tuple[str, float]]:
+        pass
