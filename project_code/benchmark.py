@@ -25,6 +25,7 @@ try:
         BM25Baseline,
         DenseEmbeddingBaseline,
         MetadataAwareMethod,
+        SAGEGraphExpansionMethod
     )
     from utils import parse_args
     from benchmarkRunner import BenchmarkRunner
@@ -137,8 +138,7 @@ def load_documents_and_qrels(
         batch_size = min(batch_size, len(query_ids))
         sampled_query_ids = random.sample(query_ids, batch_size)
         qrels = {qid: qrels[qid] for qid in sampled_query_ids}
-        logger.info(f"Sampled {
-                len(qrels)} queries (batch_size={batch_size}, seed={random_seed})")
+        logger.info(f"Sampled {len(qrels)} queries (batch_size={batch_size}, seed={random_seed})")
 
     return documents, qrels
 
@@ -216,9 +216,7 @@ def sample_documents(
             sampled_doc_ids.update(random.sample(remaining_ids, extra_count))
 
     sampled_documents = {doc_id: documents[doc_id] for doc_id in sampled_doc_ids}
-    logger.info(f"Sampled {
-            len(sampled_documents)} documents and preserved {
-            len(sampled_qrels)} qrels")
+    logger.info(f"Sampled {len(sampled_documents)} documents and preserved {len(sampled_qrels)} qrels")
 
     return sampled_documents, sampled_qrels
 
@@ -230,24 +228,34 @@ BASELINE_METHODS = {
     "bm25": {
         "builder": lambda args: BM25Baseline(),
         "label": "BM25",
-        "include_labels": False,
     },
     "dense": {
         "builder": lambda args: DenseEmbeddingBaseline(model_name=args.embedding_model),
         "label": "DenseEmbedding",
-        "include_labels": False,
     },
 }
 
 # Experimental methods to compare against baseline
+
 EXPERIMENTAL_METHODS = {
+    # MetadataAware is defined as a metadata-based method, so it always
+    # uses categorical and hierarchical information regardless of CLI flags.
     "metadata_aware": {
         "builder": lambda args: MetadataAwareMethod(
             metadata_boost=getattr(args, "metadata_boost", 2.0), first_stage_k=100
         ),
         "label": "MetadataAware",
-        "include_labels": True,
+        "include_categorical": True,
+        "include_hierarchical":True
     },
+    "graph_sage":{
+        "builder": lambda args: SAGEGraphExpansionMethod(
+
+        ),
+        "label": "GraphSage",
+        "include_categorical":False,
+        "include_hierarchical":False
+    }
 }
 
 
@@ -301,7 +309,8 @@ def main():
     runner.run_method(
         baseline_config["label"],
         baseline_method,
-        include_labels=baseline_config["include_labels"],
+        include_categorical=args.include_categorical,
+        include_hierarchical=args.include_hierarchical,
         use_cache=use_cache,
     )
 
@@ -315,7 +324,8 @@ def main():
         runner.run_method(
             method_config["label"],
             method,
-            include_labels=method_config["include_labels"],
+            include_hierarchical=method_config["include_hierarchical"],
+            include_categorical=method_config["include_categorical"],
             use_cache=use_cache,
         )
 

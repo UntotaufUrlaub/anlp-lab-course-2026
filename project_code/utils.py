@@ -11,17 +11,17 @@ def create_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--docs-path",
-        default="output/documents_enriched_03.jsonl",
+        default="project_datasets/output/documents_enriched_03.jsonl",
         help="Path to documents JSONL file",
     )
     parser.add_argument(
         "--qrels-path",
-        default="output/qrels_enriched_02.jsonl",
+        default="project_datasets/output/qrels_enriched_02.jsonl",
         help="Path to qrels JSONL file",
     )
     parser.add_argument(
         "--output-path",
-        default="results/method_results.json",
+        default="project_code/results/method_results.json",
         help="Path to save results",
     )
     parser.add_argument(
@@ -69,15 +69,22 @@ def create_parser() -> argparse.ArgumentParser:
         "--baseline",
         default="bm25",
         choices=["bm25", "dense"],
-        help="Baseline method to use for comparison (default: bm25). Available: bm25, dense",
+        help="Baseline method to use for comparison (default: bm25). Available: bm25, dense"
     )
     parser.add_argument(
         "--methods",
         nargs="+",
-        default=["metadata_aware"],
-        choices=["metadata_aware"],
+        default=[],
+        choices=["metadata_aware", "github_sage", "graph_sage"],
         help="Experimental methods to benchmark against baseline. Available: metadata_aware",
     )
+    parser.add_argument(
+        "--include-categorical",
+        action="store_true")
+
+    parser.add_argument(
+        "--include-hierarchical",
+        action="store_true")
 
     return parser
 
