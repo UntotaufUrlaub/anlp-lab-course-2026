@@ -75,12 +75,15 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--methods",
         nargs="+",
-        default=["dense_labels", "charm"],
-        choices=["dense_labels", "charm"],
-        help="Experimental methods to benchmark against baseline. Available: dense_labels, charm",
+        default=["graph_sage"],
+        choices=["dense_labels", "charm", "graph_sage"],
+        help="Experimental methods to benchmark against baseline. Available: dense_labels, charm, graph_sage",
     )
     parser.add_argument("--hyperparam-search", action="store_true")
     parser.add_argument("--n-trials", type=int, default=20)
+    parser.add_argument("--include-categorical", action="store_true")
+
+    parser.add_argument("--include-hierarchical", action="store_true")
 
     return parser
 
@@ -114,7 +117,7 @@ def _flatten_hierarchical(hierarchical) -> List[str]:
     return []
 
 
-# TODO refactor categorical extract to method
+# # TODO refactor categorical extract to method
 def extract_metadata_text(doc: Dict) -> str:
     structured = doc.get("structured_fields", {}) or {}
     categorical = structured.get("categorical", {}) or {}
@@ -131,8 +134,8 @@ def extract_metadata_text(doc: Dict) -> str:
     return " ".join(parts)
 
 
-# TODO does order of concatenating matters?
-def prepare_text(
+# # TODO does order of concatenating matters?
+def old_prepare_text(
     doc: Dict, include_title: bool = True, include_labels: bool = False
 ) -> str:
     text_parts = []
@@ -142,4 +145,45 @@ def prepare_text(
         text_parts.append(doc["title"])
     if doc.get("main_text"):
         text_parts.append(doc["main_text"])
+    return " ".join(text_parts)
+
+
+def as_text_list(value):
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(v) for v in value if v]
+    if isinstance(value, dict):
+        items = []
+        for v in value.values():
+            items.extend(as_text_list(v))
+        return items
+    return [str(value)]
+
+
+def prepare_text(
+    doc: Dict,
+    include_title: bool = True,
+    include_hierarchical: bool = False,
+    include_categorical: bool = False,
+) -> str:
+    """Prepare document text for retrieval."""
+    text_parts = []
+
+    if include_title and doc.get("title"):
+        text_parts.append(doc["title"])
+
+    structured = doc.get("structured_fields") or {}
+
+    if include_categorical:
+        categorical = structured.get("categorical")
+        text_parts.append(" ".join(as_text_list(categorical)))
+
+    if include_hierarchical:
+        hierarchical = structured.get("hierarchical")
+        text_parts.append(" ".join(as_text_list(hierarchical)))
+
+    if doc.get("main_text"):
+        text_parts.append(doc["main_text"])
+
     return " ".join(text_parts)

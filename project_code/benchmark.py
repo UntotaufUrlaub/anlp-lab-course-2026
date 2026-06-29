@@ -25,6 +25,7 @@ try:
         BM25Baseline,
         DenseEmbeddingBaseline,
         CHARMInspiredMethod,
+        SAGEGraphExpansionMethod,
     )
     from utils import parse_args, _flatten_hierarchical
     from benchmarkRunner import BenchmarkRunner
@@ -165,8 +166,9 @@ def load_documents_and_qrels(
         batch_size = min(batch_size, len(query_ids))
         sampled_query_ids = random.sample(query_ids, batch_size)
         qrels = {qid: qrels[qid] for qid in sampled_query_ids}
-        logger.info(f"Sampled {
-                len(qrels)} queries (batch_size={batch_size}, seed={random_seed})")
+        logger.info(
+            f"Sampled {len(qrels)} queries (batch_size={batch_size}, seed={random_seed})"
+        )
 
     return documents, qrels
 
@@ -244,9 +246,9 @@ def sample_documents(
             sampled_doc_ids.update(random.sample(remaining_ids, extra_count))
 
     sampled_documents = {doc_id: documents[doc_id] for doc_id in sampled_doc_ids}
-    logger.info(f"Sampled {
-            len(sampled_documents)} documents and preserved {
-            len(sampled_qrels)} qrels")
+    logger.info(
+        f"Sampled {len(sampled_documents)} documents and preserved {len(sampled_qrels)} qrels"
+    )
 
     return sampled_documents, sampled_qrels
 
@@ -258,25 +260,32 @@ BASELINE_METHODS = {
     "bm25": {
         "builder": lambda args: BM25Baseline(),
         "label": "BM25",
-        "include_labels": False,
     },
     "dense": {
         "builder": lambda args: DenseEmbeddingBaseline(model_name=args.embedding_model),
         "label": "DenseEmbedding",
-        "include_labels": False,
     },
 }
 
 # Experimental methods to compare against baseline
+
 EXPERIMENTAL_METHODS = {
     "dense_labels": {
         "builder": lambda args: DenseEmbeddingBaseline(
             model_name=args.embedding_model,
-            include_labels=True,
+            include_categorical=True,
+            include_hierarchical=True,
         ),
         "label": "DenseEmbedding+Labels",
     },
-    "charm": {"builder": lambda args: CHARMInspiredMethod(), "label": "charm"},
+    "charm": {
+        "builder": lambda args: CHARMInspiredMethod(),
+        "label": "charm",
+    },
+    "graph_sage": {
+        "builder": lambda args: SAGEGraphExpansionMethod(),
+        "label": "GraphSage",
+    },
 }
 
 
@@ -400,7 +409,6 @@ def main():
     runner.run_method(
         baseline_config["label"],
         baseline_method,
-        include_labels=baseline_config["include_labels"],
         use_cache=use_cache,
     )
 

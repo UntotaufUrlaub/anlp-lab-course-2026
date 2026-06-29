@@ -41,7 +41,6 @@ class BenchmarkRunner:
         self,
         method_name: str,
         method: BaseMethod,
-        include_labels: bool = False,
         use_cache: bool = True,
     ) -> Dict:
         """
@@ -50,13 +49,15 @@ class BenchmarkRunner:
         Args:
         - method_name: Name of the method
         - method: Retrieval method instance
-        - include_labels: Passed to build_index
         - use_cache: Try to load a cached index; save one after building
 
         Returns:
         - Dictionary with aggregated metrics
         """
-        self._prepare_index(method, include_labels=include_labels, use_cache=use_cache)
+        self._prepare_index(
+            method,
+            use_cache=use_cache,
+        )
 
         logger.info(f"\n{'=' * 60}")
         logger.info(f"Running {method_name}...")
@@ -88,8 +89,9 @@ class BenchmarkRunner:
             max_debug_queries = 5 if self.debug else 2
             if debug_count < max_debug_queries:
                 logger.info(
-                    f"  Query {query_id}: {
-                        len(rankings)} retrieved, {relevant_count} total relevant, {matched_relevant} matched"
+                    f"  Query {query_id}: {len(rankings)} "
+                    f"retrieved, {relevant_count} "
+                    f"total relevant, {matched_relevant} matched"
                 )
                 if len(rankings) > 0:
                     logger.info(f"    Top retrieved: {rankings[:5]}")
@@ -121,7 +123,9 @@ class BenchmarkRunner:
     # ------------------------------------------------------------------
 
     def _prepare_index(
-        self, method: BaseMethod, include_labels: bool, use_cache: bool
+        self,
+        method: BaseMethod,
+        use_cache: bool,
     ) -> None:
         """Load cached index or build from scratch, then optionally save."""
         if use_cache and method.load_cache(self.cache_dir):
@@ -131,7 +135,9 @@ class BenchmarkRunner:
             return
 
         logger.info(f"[{type(method).__name__}] Building index...")
-        method.build_index(self.documents, include_labels=include_labels)
+        method.build_index(
+            self.documents,
+        )
 
         if use_cache:
             method.save_cache(self.cache_dir)
@@ -180,11 +186,12 @@ class BenchmarkRunner:
             if "query_details" in metrics:
                 print("\n  QUERY DETAILS:")
                 for detail in metrics["query_details"][:5]:
-                    print(f"    query_id={
-                            detail['query_id']} retrieved={
-                            detail['retrieved']} " f"matched={
-                            detail['matched']} top={
-                            detail['top_retrieved']}")
+                    print(
+                        f"    query_id={detail['query_id']} "
+                        f"retrieved={detail['retrieved']} "
+                        f"matched={detail['matched']} "
+                        f"top={detail['top_retrieved']}"
+                    )
                 if len(metrics["query_details"]) > 5:
                     print(
                         f"    ...and {len(metrics['query_details']) - 5} more queries"
