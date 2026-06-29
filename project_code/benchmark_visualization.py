@@ -208,6 +208,5 @@ if __name__ == "__main__":
         "hierarchical": False,
         "categorical": False,
     }
-    visualize_bar_chart(["dense_batchsize500_k2_5_10_seed42categoricalhierarchical.json",
-                         "dense_batchsize500_k2_5_10_seed42.json"],
+    visualize_bar_chart(["method_results.json"],
                          description)

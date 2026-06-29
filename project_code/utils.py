@@ -75,7 +75,7 @@ def create_parser() -> argparse.ArgumentParser:
         "--methods",
         nargs="+",
         default=[],
-        choices=["metadata_aware"],
+        choices=["metadata_aware", "github_sage", "graph_sage"],
         help="Experimental methods to benchmark against baseline. Available: metadata_aware",
     )
     parser.add_argument(

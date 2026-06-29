@@ -25,6 +25,7 @@ try:
         BM25Baseline,
         DenseEmbeddingBaseline,
         MetadataAwareMethod,
+        SAGEGraphExpansionMethod
     )
     from utils import parse_args
     from benchmarkRunner import BenchmarkRunner
@@ -246,6 +247,14 @@ EXPERIMENTAL_METHODS = {
         "label": "MetadataAware",
         "include_categorical": True,
         "include_hierarchical":True
+    },
+    "graph_sage":{
+        "builder": lambda args: SAGEGraphExpansionMethod(
+
+        ),
+        "label": "GraphSage",
+        "include_categorical":False,
+        "include_hierarchical":False
     }
 }
 
