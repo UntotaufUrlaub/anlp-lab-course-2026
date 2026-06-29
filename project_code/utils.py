@@ -14,6 +14,7 @@ def create_parser() -> argparse.ArgumentParser:
         default="output/documents_enriched_03.jsonl",
         help="Path to documents JSONL file",
     )
+    # TODO use qrels instead of enriched bc citation matching?
     parser.add_argument(
         "--qrels-path",
         default="output/qrels_enriched_02.jsonl",
@@ -74,9 +75,9 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--methods",
         nargs="+",
-        default=["metadata_aware", "dense_labels", "charm"],
-        choices=["metadata_aware", "dense_labels", "charm", "whitened++"],
-        help="Experimental methods to benchmark against baseline. Available: dense_labels, metadata_aware, charm, whitened++",
+        default=["dense_labels", "charm"],
+        choices=["dense_labels", "charm"],
+        help="Experimental methods to benchmark against baseline. Available: dense_labels, charm",
     )
     parser.add_argument("--hyperparam-search", action="store_true")
     parser.add_argument("--n-trials", type=int, default=20)
@@ -113,6 +114,7 @@ def _flatten_hierarchical(hierarchical) -> List[str]:
     return []
 
 
+# TODO refactor categorical extract to method
 def extract_metadata_text(doc: Dict) -> str:
     structured = doc.get("structured_fields", {}) or {}
     categorical = structured.get("categorical", {}) or {}
@@ -129,14 +131,15 @@ def extract_metadata_text(doc: Dict) -> str:
     return " ".join(parts)
 
 
+# TODO does order of concatenating matters?
 def prepare_text(
     doc: Dict, include_title: bool = True, include_labels: bool = False
 ) -> str:
     text_parts = []
-    if include_title and doc.get("title"):
-        text_parts.append(doc["title"])
     if include_labels:
         text_parts.append(extract_metadata_text(doc))
+    if include_title and doc.get("title"):
+        text_parts.append(doc["title"])
     if doc.get("main_text"):
         text_parts.append(doc["main_text"])
     return " ".join(text_parts)

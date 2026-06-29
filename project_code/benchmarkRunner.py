@@ -6,15 +6,11 @@ import numpy as np
 import json
 
 try:
-    from methods import (
-        BaseMethod,
-        prepare_text,
-    )
+    from methods import BaseMethod
     from metrics import evaluate
 except ImportError:
     from project_code.methods import (
         BaseMethod,
-        prepare_text,
     )
     from project_code.metrics import evaluate
 
@@ -77,32 +73,12 @@ class BenchmarkRunner:
                 continue
 
             query_doc = self.documents[query_id]
-            query_text = prepare_text(
-                query_doc, include_title=True, include_labels=False
-            )
-
-            # Extract metadata from query document for metadata-aware methods
-            query_metadata = None
-            structured = query_doc.get("structured_fields", {})
-            if isinstance(structured, dict):
-                query_metadata = {}
-                if "categorical" in structured:
-                    query_metadata["categorical"] = structured.get("categorical")
 
             # Retrieve results (exclude query itself)
             # Use max of k_values to ensure we get enough results
             retrieve_top_k = max(self.k_values) if self.k_values else 10
 
-            # Pass metadata to retrieve if method supports it
-            if (
-                hasattr(method, "retrieve")
-                and "metadata" in method.retrieve.__code__.co_varnames
-            ):
-                results = method.retrieve(
-                    query_text, top_k=retrieve_top_k, metadata=query_metadata
-                )
-            else:
-                results = method.retrieve(query_text, top_k=retrieve_top_k)
+            results = method.retrieve(query_doc, top_k=retrieve_top_k)
             rankings = [doc_id for doc_id, _ in results if doc_id != query_id]
 
             relevant_count = len(ground_truth)

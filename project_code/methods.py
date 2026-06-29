@@ -37,7 +37,7 @@ class BaseMethod(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def retrieve(self, query: str, top_k: int = 100) -> List[Tuple[str, float]]:
+    def retrieve(self, query_doc: Dict, top_k: int = 100) -> List[Tuple[str, float]]:
         raise NotImplementedError
 
     def cache_key(self) -> str:
@@ -74,8 +74,9 @@ class BM25Baseline(BaseMethod):
         self.bm25 = BM25Okapi(self.corpus)
         logger.info(f"BM25 index built with {len(self.corpus)} documents")
 
-    def retrieve(self, query: str, top_k: int = 10) -> List[Tuple[str, float]]:
-        query_tokens = query.lower().split()
+    def retrieve(self, query_doc: Dict, top_k: int = 10) -> List[Tuple[str, float]]:
+        query_text = prepare_text(query_doc, include_title=True, include_labels=False)
+        query_tokens = query_text.lower().split()
         scores = self.bm25.get_scores(query_tokens)
         top_k_indices = np.argsort(scores)[-(top_k + 1) :][::-1]
         return [(self.doc_ids[i], float(scores[i])) for i in top_k_indices]
@@ -116,107 +117,16 @@ class DenseEmbeddingBaseline(BaseMethod):
         )
         logger.info(f"Embedding index built with {len(self.embeddings)} documents")
 
-    def retrieve(self, query: str, top_k: int = 10) -> List[Tuple[str, float]]:
-        query_embedding = self.model.encode(query, convert_to_numpy=True)
+    def retrieve(self, query_doc: Dict, top_k: int = 10) -> List[Tuple[str, float]]:
+        query_text = prepare_text(
+            query_doc, include_title=True, include_labels=self.include_labels
+        )
+        query_embedding = self.model.encode(query_text, convert_to_numpy=True)
         similarities = np.dot(self.embeddings, query_embedding) / (
             np.linalg.norm(self.embeddings, axis=1) * np.linalg.norm(query_embedding)
         )
         top_k_indices = np.argsort(similarities)[-(top_k + 1) :][::-1]
         return [(self.doc_ids[i], float(similarities[i])) for i in top_k_indices]
-
-
-class MetadataAwareMethod(BaseMethod):
-    """
-    Single-stage weighted multi-field dense retrieval.
-    Each field (metadata, title, main_text) is encoded separately,
-    then combined as a weighted sum of embeddings.
-    Answers: does metadata/hierarchy improve over text-only baselines?
-    """
-
-    _CACHE_FIELDS = ("doc_ids", "doc_embeddings")
-
-    def __init__(
-        self,
-        model_name: str = "all-MiniLM-L6-v2",
-        metadata_boost: float = 2.0,
-        title_boost: float = 1.5,
-    ):
-        self.model = SentenceTransformer(model_name)
-        self.metadata_boost = 1.0
-        self.title_boost = 1.0
-        self.doc_ids = []
-        self.doc_embeddings = None  # (N, D) final weighted embeddings
-        print(
-            f"MetadataAwareMethod with metadata_boost {self.metadata_boost}, title_boost {self.title_boost}"
-        )
-
-    def cache_key(self) -> str:
-        return f"{type(self).__name__}_mb{self.metadata_boost}_tb{self.title_boost}"
-
-    def _field_weights(self) -> Dict[str, float]:
-        return {
-            "metadata": self.metadata_boost,
-            "title": self.title_boost,
-            "main_text": 1.0,
-        }
-
-    def _extract_fields(self, doc: Dict) -> Dict[str, str]:
-        return {
-            "metadata": extract_metadata_text(doc),
-            "title": doc.get("title") or "",
-            "main_text": doc.get("main_text") or "",
-        }
-
-    def _encode(self, texts: List[str]) -> np.ndarray:
-        return self.model.encode(
-            texts, batch_size=32, convert_to_numpy=True, show_progress_bar=True
-        )
-
-    def build_index(self, documents: Dict, **kwargs) -> None:
-        self.doc_ids = list(documents.keys())
-        all_fields = [self._extract_fields(doc) for doc in documents.values()]
-        weights = self._field_weights()
-        total_weight = sum(weights.values())
-
-        weighted_sum = None
-        for field, w in weights.items():
-            texts = [f[field] for f in all_fields]
-            embs = self._encode(texts)  # (N, D)
-            weighted_sum = (
-                (weighted_sum + w * embs) if weighted_sum is not None else w * embs
-            )
-
-        self.doc_embeddings = weighted_sum / total_weight  # (N, D)
-        logger.info(f"MetadataAware index built: {len(self.doc_ids)} docs")
-
-    def retrieve(
-        self, query: str, top_k: int = 10, **kwargs
-    ) -> List[Tuple[str, float]]:
-        q = self.model.encode(query, convert_to_numpy=True)
-        norms = np.linalg.norm(self.doc_embeddings, axis=1) * np.linalg.norm(q) + 1e-10
-        scores = (self.doc_embeddings @ q) / norms
-        top_indices = np.argsort(scores)[-(top_k + 1) :][::-1]
-        return [(self.doc_ids[i], float(scores[i])) for i in top_indices]
-
-    def save_cache(self, cache_dir: Path) -> None:
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        path = cache_dir / f"{self.cache_key()}.pkl"
-        with open(path, "wb") as f:
-            pickle.dump(
-                {field: getattr(self, field) for field in self._CACHE_FIELDS}, f
-            )
-        logger.info(f"Cache saved: {path}")
-
-    def load_cache(self, cache_dir: Path) -> bool:
-        path = cache_dir / f"{self.cache_key()}.pkl"
-        if not path.exists():
-            return False
-        with open(path, "rb") as f:
-            payload = pickle.load(f)
-        for field, value in payload.items():
-            setattr(self, field, value)
-        logger.info(f"Cache loaded: {path} ({len(self.doc_ids)} docs)")
-        return True
 
 
 class CHARMInspiredMethod(BaseMethod):
@@ -233,7 +143,7 @@ class CHARMInspiredMethod(BaseMethod):
         self,
         model_name: str = "all-MiniLM-L6-v2",
         field_weights: Dict[str, float] = None,
-        first_stage_k: int = 50,
+        first_stage_k: int = 10,
     ):
         self.model = SentenceTransformer(model_name)
         self.field_weights = field_weights or {
@@ -258,7 +168,9 @@ class CHARMInspiredMethod(BaseMethod):
         }
 
     def _encode(self, texts):
-        return self.model.encode(texts, convert_to_numpy=True, show_progress_bar=True)
+        return self.model.encode(
+            texts, batch_size=32, convert_to_numpy=True, show_progress_bar=True
+        )
 
     def _cosine(self, matrix, vec):
         return (
@@ -283,12 +195,16 @@ class CHARMInspiredMethod(BaseMethod):
 
         self.agg_embeddings = weighted_sum / total_weight
 
-    def retrieve(self, query: str, top_k: int = 10, **kwargs):
-        q = self.model.encode(query, convert_to_numpy=True)
+    def retrieve(self, query_doc: Dict, top_k: int = 10, **kwargs):
+
+        fields = self._extract_fields(query_doc)
+        query_text = " ".join(v for v in fields.values() if v)
+        q = self.model.encode(query_text, convert_to_numpy=True)
 
         # Stage 1: shortlist via aggregated embedding
+        k1 = min(self.first_stage_k, len(self.doc_ids))
         agg_scores = self._cosine(self.agg_embeddings, q)
-        shortlist = np.argsort(agg_scores)[-(self.first_stage_k + 1) :][::-1]
+        shortlist = np.argsort(agg_scores)[-k1:][::-1]
 
         # Stage 2: rerank by max similarity across any field
         field_scores = np.stack(
@@ -304,37 +220,3 @@ class CHARMInspiredMethod(BaseMethod):
         scores = field_scores[order]
 
         return [(self.doc_ids[i], float(s)) for i, s in zip(final, scores)]
-
-
-class WhitenedDenseMethod(DenseEmbeddingBaseline):
-    """DenseEmbedding with PCA whitening applied to all embeddings."""
-
-    _CACHE_FIELDS = ("doc_ids", "embeddings", "pca")
-
-    def __init__(
-        self, model_name="all-MiniLM-L6-v2", include_labels=False, n_components=0.96
-    ):
-        super().__init__(model_name, include_labels)
-        self.n_components = n_components  # explained variance threshold, matches paper
-        self.pca = None
-
-    def cache_key(self):
-        return (
-            f"{type(self).__name__}_nc{self.n_components}_labels{self.include_labels}"
-        )
-
-    def build_index(self, documents, **kwargs):
-        super().build_index(documents, **kwargs)
-        self.pca = PCA(n_components=self.n_components, whiten=True)
-        self.embeddings = self.pca.fit_transform(self.embeddings)
-
-    def retrieve(self, query, top_k=10, **kwargs):
-        q = self.model.encode(query, convert_to_numpy=True)
-        q = self.pca.transform(q[None, :])[0]
-        similarities = (
-            self.embeddings
-            @ q
-            / (np.linalg.norm(self.embeddings, axis=1) * np.linalg.norm(q) + 1e-10)
-        )
-        top_indices = np.argsort(similarities)[-(top_k + 1) :][::-1]
-        return [(self.doc_ids[i], float(similarities[i])) for i in top_indices]

@@ -24,9 +24,7 @@ try:
     from methods import (
         BM25Baseline,
         DenseEmbeddingBaseline,
-        MetadataAwareMethod,
         CHARMInspiredMethod,
-        WhitenedDenseMethod,
     )
     from utils import parse_args, _flatten_hierarchical
     from benchmarkRunner import BenchmarkRunner
@@ -34,9 +32,7 @@ except ImportError:
     from project_code.methods import (
         BM25Baseline,
         DenseEmbeddingBaseline,
-        MetadataAwareMethod,
         CHARMInspiredMethod,
-        WhitenedDenseMethod,
     )
     from project_code.utils import parse_args, _flatten_hierarchical
     from project_code.benchmarkRunner import BenchmarkRunner
@@ -280,17 +276,7 @@ EXPERIMENTAL_METHODS = {
         ),
         "label": "DenseEmbedding+Labels",
     },
-    "metadata_aware": {
-        "builder": lambda args: MetadataAwareMethod(),
-        "label": "BetterMetaDataAwareness",
-    },
     "charm": {"builder": lambda args: CHARMInspiredMethod(), "label": "charm"},
-    "whitened++": {
-        "builder": lambda args: WhitenedDenseMethod(
-            model_name=args.embedding_model, include_labels=True
-        ),
-        "label": "Whitened-Dense+Labels",
-    },
 }
 
 
@@ -323,8 +309,7 @@ def hyperparam_search(args, documents, qrels, n_trials=20, seed=42):
                 "metadata": params["metadata_boost"],
                 "title": params["title_boost"],
                 "main_text": params["main_text_boost"],
-            },
-            first_stage_k=100,
+            }
         )
         label = f"CHARM_mb{params['metadata_boost']}_tb{params['title_boost']}_mt{params['main_text_boost']}"
 
