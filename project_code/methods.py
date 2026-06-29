@@ -76,7 +76,7 @@ def make_cache_key(documents: Dict, method:str,model: str = None,
     """Create a stable hash for the BM25 index input."""
     hasher = hashlib.sha256()
 
-    if method=="dense":
+    if method=="dense" or method=="graph_sage" or method=="metadata_aware":
         config = {
             "method": method,
             "model": model,

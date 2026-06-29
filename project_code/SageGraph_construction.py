@@ -1,13 +1,16 @@
 import json
 import sys
 from abc import abstractmethod, ABC
-from collections import defaultdict
+from collections import defaultdict, Counter
 from itertools import combinations
 
 import networkx as nx
 import pickle
 import logging
+import random
 from pathlib import Path
+
+import numpy as np
 
 # --------------------------------- logger ---------------------------------------------------------
 
@@ -104,15 +107,19 @@ def extract_path_levels(path_data):
     return []
 
 
-def get_hierarchical_paths(entry):
+def get_hierarchical_paths(entry, is_paper):
     hierarchical = entry.get("structured_fields", {}).get("hierarchical", {})
-
-    if not isinstance(hierarchical, dict):
-        return []
 
     paths = []
 
-    for key, value in hierarchical.items():
+    if isinstance(hierarchical, dict):
+        items = hierarchical.items()
+    elif isinstance(hierarchical, list):
+        items = enumerate(hierarchical)
+    else:
+        return []
+
+    for key, value in items:
         if key == "affiliations":
             continue
 
@@ -126,6 +133,9 @@ def get_hierarchical_paths(entry):
 
 def add_or_update_edge(graph, source_id, target_id, relation, weight):
     if source_id == target_id:
+        return
+
+    if source_id not in graph or target_id not in graph:
         return
 
     edge_data = graph.get_edge_data(source_id, target_id, default={})
@@ -218,7 +228,7 @@ def add_explicit_relation_edges(graph, entries, valid_ids,
         for target_id in related_ids:
             target_id = str(target_id)
             # if we have a related entry which is valid then we can directly add the edge
-            if target_id in valid_ids:
+            if target_id in valid_ids and source_id in valid_ids:
                 add_or_update_edge(graph, source_id, target_id, relation, weight)
                 edge_count += 1
 
@@ -291,7 +301,7 @@ def add_hierarchical_path_edges(graph, entries, is_paper,
             if entry_id is None:
                 continue
 
-        for path in get_hierarchical_paths(entry):
+        for path in get_hierarchical_paths(entry, is_paper):
             for level_index in range(1, len(path) + 1):
                 prefix = " / ".join(path[:level_index])
                 buckets[prefix].append(entry_id)
@@ -324,23 +334,68 @@ def add_hierarchical_path_edges(graph, entries, is_paper,
 class SAGEGraph(ABC):
     def __init__(self, graph_name):
         self.graph = nx.MultiDiGraph()
+        self.graph_name = graph_name
 
         GRAPH_DIR = PROJECT_DIR / "project_code" / "graphs"
         GRAPH_DIR.mkdir(exist_ok=True)
 
-        self.save_path = GRAPH_DIR / f"{graph_name}.pkl"
+        self.save_path = GRAPH_DIR / f"{self.graph_name}.pkl"
 
     @abstractmethod
     def build_graph(self, doc_entries):
         pass
 
     def save_graph(self,):
+        logger.info(f"Saving graph {self.graph_name} ...")
         with open(self.save_path, "wb") as f:
             pickle.dump(self.graph, f)
 
     def load_graph(self):
+        logger.info(f"Loading graph {self.graph_name} ...")
         with open(self.save_path, "rb") as f:
-            return pickle.load(f)
+            self.graph = pickle.load(f)
+            return self.graph
+
+    def inspect_graph_densities_for_expansion(self):
+        logger.info(f"Inspecting graph_densities for {self.graph_name} ...")
+        sample_nodes = list(self.graph.nodes())
+
+        neighbor_counts = []
+        for node in sample_nodes:
+            neighbors = set(self.graph.successors(node)) | set(self.graph.predecessors(node))
+            neighbor_counts.append(len(neighbors))
+
+        avg_neighbor_count = sum(neighbor_counts) / len(neighbor_counts) if len(neighbor_counts) > 0 else 0
+
+        # inspect neighborhood
+        print("avg neighbors:", avg_neighbor_count)
+        print("max neighbors:", max(neighbor_counts))
+
+        degrees = [self.graph.degree(node) for node in self.graph.nodes()]
+
+        # inspect degree distribution
+        print(f"Average Degree: {sum(degrees) / len(degrees):.2f}")
+        print(f"Median Degree: {np.median(degrees)}")
+        print(f"95th percentile: {np.percentile(degrees, 95)}")
+        print(f"99th percentile: {np.percentile(degrees, 99)}")
+        print(f"Maximum Degree: {max(degrees)}")
+
+    def inspect_empty_nodes(self):
+        empty_nodes = [n for n, attrs in self.graph.nodes(data=True) if not attrs]
+
+        print("empty nodes:", len(empty_nodes))
+        print("examples:", empty_nodes[:10])
+
+        if len(empty_nodes)!=0:
+            node = empty_nodes[0]
+            print("node id:", node)
+            print("has paper prefix:", str(node).startswith("paper:"))
+
+        non_empty_nodes = [n for n, attrs in self.graph.nodes(data=True) if attrs]
+
+        print("non-empty nodes:", len(non_empty_nodes))
+        print("non-empty examples:", non_empty_nodes[:10])
+        print(self.graph.nodes[non_empty_nodes[0]])
 
 class PaperGraph(SAGEGraph):
     """
@@ -391,16 +446,41 @@ class PaperGraph(SAGEGraph):
 
         return self.graph
 
+    def inspect_unusually_high_neighbor_nodes(self):
+        max_neighbor_node = max(
+            self.graph.nodes,
+            key=lambda n: len(set(self.graph.successors(n)) | set(self.graph.predecessors(n)))
+        )
+
+        neighbors = set(self.graph.successors(max_neighbor_node)) | set(self.graph.predecessors(max_neighbor_node))
+
+        print("Title of node with most unique neighbors",self.graph.nodes[max_neighbor_node].get("title"))
+
+        print("Node_id of node with most unique neighbors:", max_neighbor_node)
+        print("Unique neighbor count:", len(neighbors))
+        print("degree:", self.graph.degree(max_neighbor_node))
+
+        relations = Counter()
+
+        for _, _, data in self.graph.out_edges(max_neighbor_node, data=True):
+            relations["OUT " + data.get("relation", "unknown")] += 1
+
+        for _, _, data in self.graph.in_edges(max_neighbor_node, data=True):
+            relations["IN " + data.get("relation", "unknown")] += 1
+
+        print(relations)
+
+
 class GitHubGraph(SAGEGraph):
     def __init__(self, graph_name):
         super().__init__(graph_name)
 
     def build_graph(self, github_entries):
 
-        logger.info(f"Building github_graph...")
+        logger.info(f"Building graph...")
         github_ids = add_document_nodes(self.graph, github_entries, is_paper=False)
 
-        logger.info(f"\nAdded {len(github_ids)} github_graph nodes to the graph.")
+        logger.info(f"\nAdded {len(github_ids)} graph nodes to the graph.")
 
         logger.info(f"\nBuilding linked issue relations ...")
 
@@ -437,13 +517,13 @@ if __name__ == "__main__":
     total_dataset_path = PROJECT_DIR / "project_datasets" / "output" / "documents_enriched_03.jsonl"
 
     # paper_graph construction
-    # paper_entries = load_entries(total_dataset_path, "paper")
-    #
-    # paper_graph = PaperGraph("paper_graph")
-    #
-    # paper_graph.build_graph(paper_entries)
-    #
-    # paper_graph.save_graph()
+    paper_entries = load_entries(total_dataset_path, "paper")
+
+    paper_graph = PaperGraph("paper_graph")
+
+    paper_graph.build_graph(paper_entries)
+
+    paper_graph.save_graph()
 
     # github graph construction
     github_entries = load_entries(total_dataset_path, "github")
@@ -452,4 +532,22 @@ if __name__ == "__main__":
 
     github_graph.build_graph(github_entries)
 
-    github_graph.save_graph()
+    # inspect graph statistics
+    print("Paper_graph statistics:")
+    paper_graph = PaperGraph("paper_graph")
+    paper_graph.load_graph()
+    print("\n")
+    paper_graph.inspect_unusually_high_neighbor_nodes()
+    print("\n")
+    paper_graph.inspect_empty_nodes()
+    print("\n")
+    paper_graph.inspect_graph_densities_for_expansion()
+
+
+    print("Github_graph statistics:")
+    github_graph = GitHubGraph("github_graph")
+    github_graph.load_graph()
+    print("\n")
+    github_graph.inspect_empty_nodes()
+    print("\n")
+    github_graph.inspect_graph_densities_for_expansion()
