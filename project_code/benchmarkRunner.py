@@ -6,16 +6,10 @@ import numpy as np
 import json
 
 try:
-    from methods import (
-        BaseMethod,
-        prepare_text,
-    )
+    from methods import BaseMethod, prepare_text
     from metrics import evaluate
 except ImportError:
-    from project_code.methods import (
-        BaseMethod,
-        prepare_text,
-    )
+    from project_code.methods import BaseMethod, prepare_text
     from project_code.metrics import evaluate
 
 logger = logging.getLogger(__name__)
@@ -45,8 +39,7 @@ class BenchmarkRunner:
         self,
         method_name: str,
         method: BaseMethod,
-        include_categorical: bool=False,
-        include_hierarchical: bool=False,
+        include_labels: bool = False,
         use_cache: bool = True,
     ) -> Dict:
         """
@@ -61,8 +54,7 @@ class BenchmarkRunner:
         Returns:
         - Dictionary with aggregated metrics
         """
-        self._prepare_index(method, include_categorical=include_categorical,
-                            include_hierarchical=include_hierarchical, use_cache=use_cache)
+        self._prepare_index(method, use_cache=use_cache)
 
         logger.info(f"\n{'=' * 60}")
         logger.info(f"Running {method_name}...")
@@ -80,31 +72,14 @@ class BenchmarkRunner:
 
             query_doc = self.documents[query_id]
             query_text = prepare_text(
-                query_doc, include_title=True, include_categorical=False, include_hierarchical=False
+                query_doc, include_title=True, include_labels=True
             )
-
-            # Extract metadata from query document for metadata-aware methods
-            query_metadata = None
-            structured = query_doc.get("structured_fields", {})
-            if isinstance(structured, dict):
-                query_metadata = {}
-                if "categorical" in structured:
-                    query_metadata["categorical"] = structured.get("categorical")
 
             # Retrieve results (exclude query itself)
             # Use max of k_values to ensure we get enough results
             retrieve_top_k = max(self.k_values) if self.k_values else 10
 
-            # Pass metadata to retrieve if method supports it
-            if (
-                hasattr(method, "retrieve")
-                and "metadata" in method.retrieve.__code__.co_varnames
-            ):
-                results = method.retrieve(
-                    query_text, top_k=retrieve_top_k, metadata=query_metadata
-                )
-            else:
-                results = method.retrieve(query_text, top_k=retrieve_top_k)
+            results = method.retrieve(query_doc, top_k=retrieve_top_k)
             rankings = [doc_id for doc_id, _ in results if doc_id != query_id]
 
             relevant_count = len(ground_truth)
@@ -114,9 +89,8 @@ class BenchmarkRunner:
             max_debug_queries = 5 if self.debug else 2
             if debug_count < max_debug_queries:
                 logger.info(
-                    f"  Query {query_id}: {len(rankings)} "
-                    f"retrieved, {relevant_count} "
-                    f"total relevant, {matched_relevant} matched"
+                    f"  Query {query_id}: {
+                        len(rankings)} retrieved, {relevant_count} total relevant, {matched_relevant} matched"
                 )
                 if len(rankings) > 0:
                     logger.info(f"    Top retrieved: {rankings[:5]}")
@@ -147,9 +121,7 @@ class BenchmarkRunner:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _prepare_index(
-        self, method: BaseMethod, include_categorical:bool, include_hierarchical:bool, use_cache: bool
-    ) -> None:
+    def _prepare_index(self, method: BaseMethod, use_cache: bool) -> None:
         """Load cached index or build from scratch, then optionally save."""
         if use_cache and method.load_cache(self.cache_dir):
             logger.info(
@@ -158,8 +130,7 @@ class BenchmarkRunner:
             return
 
         logger.info(f"[{type(method).__name__}] Building index...")
-        method.build_index(self.documents, include_categorical=include_categorical,
-                           include_hierarchical=include_hierarchical)
+        method.build_index(self.documents)
 
         if use_cache:
             method.save_cache(self.cache_dir)
@@ -208,10 +179,11 @@ class BenchmarkRunner:
             if "query_details" in metrics:
                 print("\n  QUERY DETAILS:")
                 for detail in metrics["query_details"][:5]:
-                    print(f"    query_id={detail['query_id']} "
-                          f"retrieved={detail['retrieved']} " 
-                          f"matched={detail['matched']} "
-                          f"top={detail['top_retrieved']}")
+                    print(f"    query_id={
+                            detail['query_id']} retrieved={
+                            detail['retrieved']} " f"matched={
+                            detail['matched']} top={
+                            detail['top_retrieved']}")
                 if len(metrics["query_details"]) > 5:
                     print(
                         f"    ...and {len(metrics['query_details']) - 5} more queries"
@@ -275,17 +247,21 @@ class BenchmarkRunner:
                 elif pct_change < 0:
                     degradations.append(pct_change)
 
+            size_improvs = len(improvements)
+            size_degrads = len(degradations)
+            size_metrics = len(metric_names)
+
             # Summary statistics
             if improvements or degradations:
                 print("\n  Summary:")
                 if improvements:
                     print(
-                        f"    ✓ Improved {len(improvements)}/{len(metric_names)} metrics "
+                        f"    ✓ Improved {size_improvs}/{size_metrics} metrics "
                         f"(avg: {np.mean(improvements):+.2f}%)"
                     )
                 if degradations:
                     print(
-                        f"    ✗ Degraded {len(degradations)}/{len(metric_names)} metrics "
+                        f"    ✗ Degraded {size_degrads}/{size_metrics} metrics "
                         f"(avg: {np.mean(degradations):+.2f}%)"
                     )
 

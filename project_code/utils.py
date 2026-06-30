@@ -1,7 +1,7 @@
 """Utility functions for the benchmark script."""
 
 import argparse
-from typing import Any
+from typing import Any, Dict, List, Tuple
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -11,17 +11,18 @@ def create_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--docs-path",
-        default="project_datasets/output/documents_enriched_03.jsonl",
+        default="output/documents_enriched_03.jsonl",
         help="Path to documents JSONL file",
     )
+    # TODO use qrels instead of enriched bc citation matching?
     parser.add_argument(
         "--qrels-path",
-        default="project_datasets/output/qrels_enriched_02.jsonl",
+        default="output/qrels_enriched_02.jsonl",
         help="Path to qrels JSONL file",
     )
     parser.add_argument(
         "--output-path",
-        default="project_code/results/method_comparison_redid_documents.json",
+        default="results/method_results.json",
         help="Path to save results",
     )
     parser.add_argument(
@@ -32,7 +33,7 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--metadata-boost",
         type=float,
-        default=2.0,
+        default=3.0,
         help="Boost factor applied to metadata matches in MetadataAwareMethod",
     )
     parser.add_argument(
@@ -67,24 +68,19 @@ def create_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--baseline",
-        default=[],
+        default="dense",
         choices=["bm25", "dense"],
-        help="Baseline method to use for comparison (default: bm25). Available: bm25, dense"
+        help="Baseline method to use for comparison (default: dense). Available: bm25, dense",
     )
     parser.add_argument(
         "--methods",
         nargs="+",
-        default=[],
-        choices=["metadata_aware", "github_sage", "graph_sage"],
-        help="Experimental methods to benchmark against baseline. Available: metadata_aware",
+        default=["charm"],
+        choices=["dense_labels", "charm", "graph_sage"],
+        help="Experimental methods to benchmark against baseline. Available: dense_labels, charm, graph_sage",
     )
-    parser.add_argument(
-        "--include-categorical",
-        action="store_true")
-
-    parser.add_argument(
-        "--include-hierarchical",
-        action="store_true")
+    parser.add_argument("--hyperparam-search", action="store_true")
+    parser.add_argument("--n-trials", type=int, default=20)
 
     return parser
 
@@ -100,3 +96,50 @@ def parse_args(args: Any = None) -> argparse.Namespace:
     """
     parser = create_parser()
     return parser.parse_args(args)
+
+
+def _flatten_hierarchical(hierarchical) -> List[str]:
+    if isinstance(hierarchical, list):
+        return [v for v in hierarchical if v]
+    elif isinstance(hierarchical, dict):
+        parts = []
+        for v in hierarchical.values():
+            if isinstance(v, dict):
+                parts.extend(str(x) for x in v.values() if x)
+            elif isinstance(v, list):
+                parts.extend(str(x) for x in v if x)
+            elif v:
+                parts.append(str(v))
+        return parts
+    return []
+
+
+# TODO refactor categorical extract to method
+def extract_metadata_text(doc: Dict) -> str:
+    structured = doc.get("structured_fields", {}) or {}
+    categorical = structured.get("categorical", {}) or {}
+    hierarchical = structured.get("hierarchical", []) or []
+
+    parts = []
+    for v in categorical.values():
+        if isinstance(v, list):
+            parts.extend(str(x) for x in v if x is not None)
+        elif v is not None:
+            parts.append(str(v))
+
+    parts += _flatten_hierarchical(hierarchical)
+    return " ".join(parts)
+
+
+# TODO does order of concatenating matters?
+def prepare_text_dennis(
+    doc: Dict, include_title: bool = True, include_labels: bool = False
+) -> str:
+    text_parts = []
+    if include_labels:
+        text_parts.append(extract_metadata_text(doc))
+    if include_title and doc.get("title"):
+        text_parts.append(doc["title"])
+    if doc.get("main_text"):
+        text_parts.append(doc["main_text"])
+    return " ".join(text_parts)

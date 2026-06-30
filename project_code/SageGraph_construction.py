@@ -23,12 +23,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-
-
 """
 loads the whole dataset and returns the documents of the specified dataset
 dataset can be "github" or "paper"
 """
+
+
 def load_entries(path_of_joint_dataset, dataset: str):
     docs = []
     with open(path_of_joint_dataset, "r", encoding="utf-8") as f:
@@ -44,6 +44,7 @@ def load_entries(path_of_joint_dataset, dataset: str):
                     docs.append(doc)
 
     return docs
+
 
 # helper function to extract values of corpus in nice string format
 def normalize_values(value):
@@ -82,6 +83,7 @@ def get_values(entry, field_path):
 
     return normalize_values(value)
 
+
 def extract_path_levels(path_data):
     if isinstance(path_data, dict):
         return [
@@ -92,9 +94,7 @@ def extract_path_levels(path_data):
 
     if isinstance(path_data, list):
         return [
-            str(value).strip()
-            for value in path_data
-            if value and str(value).strip()
+            str(value).strip() for value in path_data if value and str(value).strip()
         ]
 
     if isinstance(path_data, str):
@@ -150,7 +150,10 @@ def add_or_update_edge(graph, source_id, target_id, relation, weight):
         relation=relation,
         weight=weight,
     )
-#----------------------- adding function --------------------------------------------------------------------------
+
+
+# ----------------------- adding function --------------------------------------------------------------------------
+
 
 # add one node per paper_entry
 def add_document_nodes(graph, entries, is_paper):
@@ -184,7 +187,7 @@ def add_document_nodes(graph, entries, is_paper):
         entry_ids.add(entry_id)
         graph.add_node(
             entry_id,
-            data_set_id = entry.get("id","") if is_paper else "",
+            data_set_id=entry.get("id", "") if is_paper else "",
             title=entry.get("title", ""),
             source_dataset=entry.get("source_dataset", ""),
             source_type=entry.get("source_type", ""),
@@ -198,11 +201,12 @@ def add_document_nodes(graph, entries, is_paper):
 
     return entry_ids
 
+
 # add related edges
 # valid ids are all extracted ids that have been added to the graph
-def add_explicit_relation_edges(graph, entries, valid_ids,
-                                is_paper,
-                                relation, weight=1.0):
+def add_explicit_relation_edges(
+    graph, entries, valid_ids, is_paper, relation, weight=1.0
+):
     edge_count = 0
 
     # go through each entry and if not a valid entry skip
@@ -236,8 +240,9 @@ def add_explicit_relation_edges(graph, entries, valid_ids,
     return edge_count
 
 
-def add_shared_field_edges(graph, entries, fields, is_paper,
-                           weight=0.5, max_bucket_size=50):
+def add_shared_field_edges(
+    graph, entries, fields, is_paper, weight=0.5, max_bucket_size=50
+):
     edge_count = 0
 
     for field_name, field_path in fields.items():
@@ -284,9 +289,9 @@ def add_shared_field_edges(graph, entries, fields, is_paper,
     return edge_count
 
 
-def add_hierarchical_path_edges(graph, entries, is_paper,
-                                weight=0.75,
-                                max_bucket_size=50):
+def add_hierarchical_path_edges(
+    graph, entries, is_paper, weight=0.75, max_bucket_size=50
+):
     buckets = defaultdict(list)
     edge_count = 0
 
@@ -331,6 +336,7 @@ def add_hierarchical_path_edges(graph, entries, is_paper,
 
     return edge_count
 
+
 class SAGEGraph(ABC):
     def __init__(self, graph_name):
         self.graph = nx.MultiDiGraph()
@@ -345,7 +351,9 @@ class SAGEGraph(ABC):
     def build_graph(self, doc_entries):
         pass
 
-    def save_graph(self,):
+    def save_graph(
+        self,
+    ):
         logger.info(f"Saving graph {self.graph_name} ...")
         with open(self.save_path, "wb") as f:
             pickle.dump(self.graph, f)
@@ -362,10 +370,16 @@ class SAGEGraph(ABC):
 
         neighbor_counts = []
         for node in sample_nodes:
-            neighbors = set(self.graph.successors(node)) | set(self.graph.predecessors(node))
+            neighbors = set(self.graph.successors(node)) | set(
+                self.graph.predecessors(node)
+            )
             neighbor_counts.append(len(neighbors))
 
-        avg_neighbor_count = sum(neighbor_counts) / len(neighbor_counts) if len(neighbor_counts) > 0 else 0
+        avg_neighbor_count = (
+            sum(neighbor_counts) / len(neighbor_counts)
+            if len(neighbor_counts) > 0
+            else 0
+        )
 
         # inspect neighborhood
         print("avg neighbors:", avg_neighbor_count)
@@ -386,7 +400,7 @@ class SAGEGraph(ABC):
         print("empty nodes:", len(empty_nodes))
         print("examples:", empty_nodes[:10])
 
-        if len(empty_nodes)!=0:
+        if len(empty_nodes) != 0:
             node = empty_nodes[0]
             print("node id:", node)
             print("has paper prefix:", str(node).startswith("paper:"))
@@ -396,6 +410,7 @@ class SAGEGraph(ABC):
         print("non-empty nodes:", len(non_empty_nodes))
         print("non-empty examples:", non_empty_nodes[:10])
         print(self.graph.nodes[non_empty_nodes[0]])
+
 
 class PaperGraph(SAGEGraph):
     """
@@ -428,20 +443,30 @@ class PaperGraph(SAGEGraph):
         logger.info(f"\nAdded {citation_edges} citation edges.")
 
         # 3. Add metadata edges efficiently using buckets
-        logger.info(f"\nBuilding graph relations using metadata with {len(paper_ids)} papers...")
+        logger.info(
+            f"\nBuilding graph relations using metadata with {len(paper_ids)} papers..."
+        )
         fields = {
             "venue_name": ["structured_fields", "categorical", "venue_name"],
-            "publication_types": ["structured_fields", "categorical", "publication_types"],
+            "publication_types": [
+                "structured_fields",
+                "categorical",
+                "publication_types",
+            ],
             "authors": ["entities", "people"],
             # "organizations": ["entities", "organizations"],
         }
 
-        metadata_edges = add_shared_field_edges(self.graph, paper_entries, fields, is_paper=True)
+        metadata_edges = add_shared_field_edges(
+            self.graph, paper_entries, fields, is_paper=True
+        )
         logger.info(f"\nAdded {metadata_edges} paper metadata edges.")
 
         # 4. add hierarchical edges
         logger.info(f"\nBuilding graph relations using hierarchical edges...")
-        hierarchical_edges = add_hierarchical_path_edges(self.graph, paper_entries, is_paper=True)
+        hierarchical_edges = add_hierarchical_path_edges(
+            self.graph, paper_entries, is_paper=True
+        )
         logger.info(f"\nAdded {hierarchical_edges} paper hierarchical edges.")
 
         return self.graph
@@ -449,12 +474,19 @@ class PaperGraph(SAGEGraph):
     def inspect_unusually_high_neighbor_nodes(self):
         max_neighbor_node = max(
             self.graph.nodes,
-            key=lambda n: len(set(self.graph.successors(n)) | set(self.graph.predecessors(n)))
+            key=lambda n: len(
+                set(self.graph.successors(n)) | set(self.graph.predecessors(n))
+            ),
         )
 
-        neighbors = set(self.graph.successors(max_neighbor_node)) | set(self.graph.predecessors(max_neighbor_node))
+        neighbors = set(self.graph.successors(max_neighbor_node)) | set(
+            self.graph.predecessors(max_neighbor_node)
+        )
 
-        print("Title of node with most unique neighbors",self.graph.nodes[max_neighbor_node].get("title"))
+        print(
+            "Title of node with most unique neighbors",
+            self.graph.nodes[max_neighbor_node].get("title"),
+        )
 
         print("Node_id of node with most unique neighbors:", max_neighbor_node)
         print("Unique neighbor count:", len(neighbors))
@@ -504,17 +536,24 @@ class GitHubGraph(SAGEGraph):
             "topics": ["entities", "topics"],
         }
 
-        metadata_edges = add_shared_field_edges(self.graph, github_entries, fields, is_paper=False)
+        metadata_edges = add_shared_field_edges(
+            self.graph, github_entries, fields, is_paper=False
+        )
         logger.info(f"\nAdded {metadata_edges} GitHub metadata edges.")
 
         logger.info(f"\nBuilding GitHub graph relations using hierarchical data...")
-        hierarchical_edges = add_hierarchical_path_edges(self.graph, github_entries, is_paper=False)
+        hierarchical_edges = add_hierarchical_path_edges(
+            self.graph, github_entries, is_paper=False
+        )
         logger.info(f"\nAdded {hierarchical_edges} GitHub hierarchical edges.")
 
         return self.graph
 
+
 if __name__ == "__main__":
-    total_dataset_path = PROJECT_DIR / "project_datasets" / "output" / "documents_enriched_03.jsonl"
+    total_dataset_path = (
+        PROJECT_DIR / "project_datasets" / "output" / "documents_enriched_03.jsonl"
+    )
 
     # paper_graph construction
     paper_entries = load_entries(total_dataset_path, "paper")
@@ -542,7 +581,6 @@ if __name__ == "__main__":
     paper_graph.inspect_empty_nodes()
     print("\n")
     paper_graph.inspect_graph_densities_for_expansion()
-
 
     print("Github_graph statistics:")
     github_graph = GitHubGraph("github_graph")

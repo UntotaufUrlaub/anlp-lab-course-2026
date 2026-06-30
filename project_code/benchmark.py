@@ -24,18 +24,19 @@ try:
     from methods import (
         BM25Baseline,
         DenseEmbeddingBaseline,
-        MetadataAwareMethod,
-        SAGEGraphExpansionMethod
+        CHARMInspiredMethod,
+        SAGEGraphExpansionMethod,
     )
-    from utils import parse_args
+    from utils import parse_args, _flatten_hierarchical
     from benchmarkRunner import BenchmarkRunner
 except ImportError:
     from project_code.methods import (
         BM25Baseline,
         DenseEmbeddingBaseline,
-        MetadataAwareMethod,
+        CHARMInspiredMethod,
+        SAGEGraphExpansionMethod,
     )
-    from project_code.utils import parse_args
+    from project_code.utils import parse_args, _flatten_hierarchical
     from project_code.benchmarkRunner import BenchmarkRunner
 
 # ---------------------------------------------------------------------------
@@ -53,6 +54,25 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Data Loading
 # ---------------------------------------------------------------------------
+
+
+def has_structured_fields(doc: Dict) -> bool:
+    """Return True if doc has any non-empty structured_fields content."""
+    source_type = doc.get("source_type")
+    if source_type == "query":
+        return True  # never filter queries
+
+    structured = doc.get("structured_fields", {}) or {}
+    categorical = structured.get("categorical", {}) or {}
+    hierarchical = structured.get("hierarchical", []) or []
+
+    has_categorical = any(
+        (v if not isinstance(v, (list, dict)) else any(v))
+        for v in categorical.values()
+        if v is not None
+    )
+    has_hierarchical = bool(_flatten_hierarchical(hierarchical))
+    return has_categorical or has_hierarchical
 
 
 def load_jsonl(file_path: str) -> List[Dict]:
@@ -85,6 +105,15 @@ def load_documents_and_qrels(
     docs_list = load_jsonl(docs_path)
     documents = {doc["id"]: doc for doc in docs_list}
     logger.info(f"Loaded {len(documents)} documents")
+
+    # Drop non-query docs with empty structured fields
+    before = len(documents)
+    documents = {
+        did: doc for did, doc in documents.items() if has_structured_fields(doc)
+    }
+    logger.info(
+        f"Dropped {before - len(documents)} docs with empty structured_fields ({len(documents)} remaining)"
+    )
 
     logger.info(f"Loading qrels from {qrels_path}")
     qrels_list = load_jsonl(qrels_path)
@@ -138,7 +167,8 @@ def load_documents_and_qrels(
         batch_size = min(batch_size, len(query_ids))
         sampled_query_ids = random.sample(query_ids, batch_size)
         qrels = {qid: qrels[qid] for qid in sampled_query_ids}
-        logger.info(f"Sampled {len(qrels)} queries (batch_size={batch_size}, seed={random_seed})")
+        logger.info(f"Sampled {
+                len(qrels)} queries (batch_size={batch_size}, seed={random_seed})")
 
     return documents, qrels
 
@@ -216,7 +246,9 @@ def sample_documents(
             sampled_doc_ids.update(random.sample(remaining_ids, extra_count))
 
     sampled_documents = {doc_id: documents[doc_id] for doc_id in sampled_doc_ids}
-    logger.info(f"Sampled {len(sampled_documents)} documents and preserved {len(sampled_qrels)} qrels")
+    logger.info(f"Sampled {
+            len(sampled_documents)} documents and preserved {
+            len(sampled_qrels)} qrels")
 
     return sampled_documents, sampled_qrels
 
@@ -228,35 +260,94 @@ BASELINE_METHODS = {
     "bm25": {
         "builder": lambda args: BM25Baseline(),
         "label": "BM25",
+        "include_labels": False,
     },
     "dense": {
         "builder": lambda args: DenseEmbeddingBaseline(model_name=args.embedding_model),
         "label": "DenseEmbedding",
+        "include_labels": False,
     },
 }
 
 # Experimental methods to compare against baseline
-
 EXPERIMENTAL_METHODS = {
-    # MetadataAware is defined as a metadata-based method, so it always
-    # uses categorical and hierarchical information regardless of CLI flags.
-    "metadata_aware": {
-        "builder": lambda args: MetadataAwareMethod(
-            metadata_boost=getattr(args, "metadata_boost", 2.0), first_stage_k=100
+    "dense_labels": {
+        "builder": lambda args: DenseEmbeddingBaseline(
+            model_name=args.embedding_model,
+            include_labels=True,
         ),
-        "label": "MetadataAware",
-        "include_categorical": True,
-        "include_hierarchical":True
+        "label": "DenseEmbedding+Labels",
     },
-    "graph_sage":{
-        "builder": lambda args: SAGEGraphExpansionMethod(
-
-        ),
+    "charm": {"builder": lambda args: CHARMInspiredMethod(), "label": "charm"},
+    "graph_sage": {
+        "builder": lambda args: SAGEGraphExpansionMethod(),
         "label": "GraphSage",
-        "include_categorical":False,
-        "include_hierarchical":False
-    }
+    },
 }
+
+
+def hyperparam_search(args, documents, qrels, n_trials=20, seed=42):
+    random.seed(seed)
+
+    search_space = {
+        "metadata_boost": [0.5, 1.0, 1.5, 2.0, 3.0, 4.0],
+        "title_boost": [0.5, 1.0, 1.5, 2.0, 3.0],
+        "main_text_boost": [0.5, 1.0, 1.5, 2.0],
+    }
+
+    primary_metric = f"ndcg@{max(args.k_values)}_mean"
+    results = []
+    seen = set()
+
+    trial = 0
+    while trial < n_trials:
+        params = {k: random.choice(v) for k, v in search_space.items()}
+        key = tuple(params[k] for k in sorted(params))
+        if key in seen:
+            continue
+        seen.add(key)
+        trial += 1
+
+        logger.info(f"\nTrial {trial}/{n_trials}: {params}")
+
+        method = CHARMInspiredMethod(
+            field_weights={
+                "metadata": params["metadata_boost"],
+                "title": params["title_boost"],
+                "main_text": params["main_text_boost"],
+            }
+        )
+        label = f"CHARM_mb{params['metadata_boost']}_tb{params['title_boost']}_mt{params['main_text_boost']}"
+
+        runner = BenchmarkRunner(
+            documents,
+            qrels,
+            k_values=args.k_values,
+            debug=False,
+            cache_dir=Path(args.output_path).parent / "cache",
+        )
+        runner.run_method(label, method, use_cache=True)
+
+        score = runner.results[label].get(primary_metric, 0.0)
+        results.append(
+            {**params, "label": label, "score": score, "metrics": runner.results[label]}
+        )
+        logger.info(f"  → {primary_metric}: {score:.4f}")
+
+    results.sort(key=lambda r: r["score"], reverse=True)
+
+    print("\n" + "=" * 80)
+    print(f"HYPERPARAM SEARCH RESULTS (ranked by {primary_metric})")
+    print("=" * 80)
+    for r in results[:5]:
+        print(
+            f"  metadata={r['metadata_boost']} title={r['title_boost']} "
+            f"main_text={r['main_text_boost']} → {primary_metric}={r['score']:.4f}"
+        )
+
+    best = results[0]
+    logger.info(f"\nBest config: {best}")
+    return results
 
 
 # ---------------------------------------------------------------------------
@@ -297,6 +388,12 @@ def main():
             documents, qrels, args.sample_size, random_seed=args.seed
         )
 
+    if getattr(args, "hyperparam_search", False):
+        hyperparam_search(
+            args, documents, qrels, n_trials=args.n_trials, seed=args.seed
+        )
+        return
+
     # Initialize benchmark runner
     runner = BenchmarkRunner(documents, qrels, k_values=args.k_values, debug=args.debug)
 
@@ -309,8 +406,7 @@ def main():
     runner.run_method(
         baseline_config["label"],
         baseline_method,
-        include_categorical=args.include_categorical,
-        include_hierarchical=args.include_hierarchical,
+        include_labels=baseline_config["include_labels"],
         use_cache=use_cache,
     )
 
@@ -324,8 +420,6 @@ def main():
         runner.run_method(
             method_config["label"],
             method,
-            include_hierarchical=method_config["include_hierarchical"],
-            include_categorical=method_config["include_categorical"],
             use_cache=use_cache,
         )
 
