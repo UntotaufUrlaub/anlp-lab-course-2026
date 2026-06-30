@@ -690,4 +690,4 @@ class SAGEGraphExpansionMethod(BaseMethod):
             reverse=True,
         )
 
-        return ranked[:top_k + 1]
+        return ranked[:top_k]

@@ -21,7 +21,7 @@ def create_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--output-path",
-        default="project_code/results/method_results.json",
+        default="project_code/results/method_comparison_redid_documents.json",
         help="Path to save results",
     )
     parser.add_argument(

@@ -164,27 +164,27 @@ def process_papers(queries_df, corpus_df, id_counter, paper_id_map):
                 else r["corpusids"].tolist()
             )
             gold = [str(x) for x in corpusids]
-            docs.append(
-                make_doc(
-                    id=qid,
-                    source_dataset=str(query_set),
-                    source_type="query",
-                    title=None,
-                    main_text=r.get("query") or "",
-                    categorical={
-                        "specificity": (
-                            str(r["specificity"])
-                            if pd.notna(r.get("specificity"))
-                            else ""
-                        ),
-                        "quality": (
-                            str(r["quality"]) if pd.notna(r.get("quality")) else ""
-                        ),
-                    },
-                    explicit_related_ids=gold,
-                    is_candidate=False,
-                )
-            )
+            # docs.append(
+            #     make_doc(
+            #         id=qid,
+            #         source_dataset=str(query_set),
+            #         source_type="query",
+            #         title=None,
+            #         main_text=r.get("query") or "",
+            #         categorical={
+            #             "specificity": (
+            #                 str(r["specificity"])
+            #                 if pd.notna(r.get("specificity"))
+            #                 else ""
+            #             ),
+            #             "quality": (
+            #                 str(r["quality"]) if pd.notna(r.get("quality")) else ""
+            #             ),
+            #         },
+            #         explicit_related_ids=gold,
+            #         is_candidate=False,
+            #     )
+            # )
             qrels.append(make_qrel(qid, gold, "corpusid_match"))
 
     return docs, qrels

@@ -201,7 +201,7 @@ def visualize_bar_chart(input_results, description: dict, sameMethod:bool=False)
 
 if __name__ == "__main__":
     description = {
-        "method": "NeutralGraphSAGE",
+        "method": "NeutralGraphSAGE02",
         "k": [2,5,10],
         "batchsize": 500,
         "seed": 42,
@@ -209,5 +209,5 @@ if __name__ == "__main__":
         "hierarchical": False,
         "categorical": False,
     }
-    visualize_bar_chart(["method_results.json"],
+    visualize_bar_chart(["method_comparison_redid_documents.json"],
                          description)
