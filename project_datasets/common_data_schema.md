@@ -189,9 +189,9 @@ Examples:
 
 The most important structured field for graph-based and GNN approaches.
 
-Represent hierarchical paths as ordered lists from general to specific.
+Represent hierarchical paths as ordered lists from general to specific. Currently empty `{}` for both datasets — to be populated once label hierarchies or affiliation trees are derived.
 
-Examples:
+Possible future examples:
 
 GitHub:
 
@@ -205,17 +205,8 @@ Papers:
 
 ```json
 "hierarchical": {
-   "affiliations": [
-    {"country": "USA", "sector": "Academic", "organization": "Carnegie Mellon University"},
-    {"country": "USA", "sector": "Academic", "organization": "Dartmouth College"},
-    {"country": "USA", "sector": "Industry", "organization": "Google"},
-    {"country": "USA", "sector": "Industry", "organization": "Google DeepMind"}]
-  "field_of_study_path": {
-    "field": "Computer Science",
-    "research_area": "Machine Learning",
-    "topic_family": "Robustness and Evaluation",
-    "specific_topic": "BERT reproducibility"
-  }
+  "affiliation": ["Germany", "TUM", "Chair of Information Retrieval"],
+  "topic_path": ["information retrieval", "graph retrieval", "GNNs"]
 }
 ```
 
@@ -406,7 +397,7 @@ Fields:
   "secondary_texts": ["Full paper text here ..."],
   "structured_fields": {
     "categorical": {"venue_name": None, "venue_type": None, "journal": None, "journal_volume": None, "fields_of_study": [], "publication_types":[]},
-    "hierarchical": {"affiliations": [ {} ], "field_of_study_path":  {}, "method_path":  {}}
+    "hierarchical": {}
   },
   "entities": {
     "people": [list of authors],
