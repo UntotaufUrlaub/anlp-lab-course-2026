@@ -201,6 +201,7 @@ def visualize_bar_chart(input_results, description: dict, sameMethod:bool=False)
 
 if __name__ == "__main__":
     description = {
+        "method": "NeutralGraphSAGE",
         "k": [2,5,10],
         "batchsize": 500,
         "seed": 42,

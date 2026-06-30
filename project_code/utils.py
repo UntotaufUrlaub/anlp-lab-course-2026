@@ -67,7 +67,7 @@ def create_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--baseline",
-        default="bm25",
+        default=[],
         choices=["bm25", "dense"],
         help="Baseline method to use for comparison (default: bm25). Available: bm25, dense"
     )

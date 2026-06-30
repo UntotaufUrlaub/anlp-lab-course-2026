@@ -428,12 +428,16 @@ class SAGEGraphExpansionMethod(BaseMethod):
         graph_weight: float = 0.15,
         expansion_factor: int = 5,
     ):
+        # directory where graphs are
         graph_dir = PROJECT_ROOT / "graphs"
+        # individual graphs of paper and github_issue dataset
         self.graph_paths = {
             "paper": Path(paper_graph_path) if paper_graph_path else graph_dir / "paper_graph.pkl",
             "github_issue": Path(github_graph_path) if github_graph_path else graph_dir / "github_graph.pkl",
         }
+        # weight how strongly graph-neighbors influence final score
         self.graph_weight = graph_weight
+        # controls how many seed nodes are used to then start graph expansion
         self.expansion_factor = expansion_factor
 
         logger.info(f"Loading Sentence Transformer model: {model_name}")
@@ -444,26 +448,37 @@ class SAGEGraphExpansionMethod(BaseMethod):
         logger.info(f"Sentence Transformer model loaded: {model_name}")
         logger.info(f"Using device: {device}")
 
+        # store embeddings and document_ids
+        # id_to_index stores paper/github entry id and corresponding row in embedding matrix
+        # id_to_dataset stores paper/github entry id and which dataset it belongs to
         self.indexes = {
-            "paper": {"embeddings": None, "doc_ids": [], "id_to_index": {}},
-            "github_issue": {"embeddings": None, "doc_ids": [], "id_to_index": {}},
+            "embeddings":None,
+            "doc_ids": [],
+            "id_to_index": {},
+            "id_to_dataset": {},
         }
+        # hold the networkx graphs in "paper" and "github_issue"
         self.graphs = {}
+
+        # enter all node_ids of each graph
         self.graph_node_lookup = {}
+        #
         self.query_source_by_text = {}
         self.cache_dir = CACHE_DIR
 
+    # given a document return which dataset it belongs to
     def _dataset_key_for_doc(self, doc: Dict):
         source_type = doc.get("source_type")
 
         if source_type == "github_issue":
             return "github_issue"
 
-        if source_type in {"paper", "query"}:
+        if source_type =="paper":
             return "paper"
 
         return None
 
+    # given a document index and document, return the native id for papers and document id for github issues
     def _index_id_for_doc(self, doc_id, doc: Dict, dataset_key: str):
         if dataset_key == "paper":
             raw_source = doc.get("raw_source", {}) or {}
@@ -475,14 +490,10 @@ class SAGEGraphExpansionMethod(BaseMethod):
 
         return None
 
-    def _is_candidate(self, doc: Dict):
-        return doc.get("retrieval_metadata", {}).get("is_candidate", True)
-
-    def _is_queryable(self, doc: Dict):
-        return doc.get("retrieval_metadata", {}).get("is_queryable", True)
-
+    # load the graphs from the directories in self.graph_paths
     def _load_graphs(self):
         for dataset_key, graph_path in self.graph_paths.items():
+            # means we already have loaded this graph
             if dataset_key in self.graphs:
                 continue
 
@@ -492,6 +503,7 @@ class SAGEGraphExpansionMethod(BaseMethod):
                 self.graph_node_lookup[dataset_key] = {}
                 continue
 
+            # loaded graph can be put into self.graphs
             logger.info(f"Loading {dataset_key} graph from {graph_path}")
             with open(graph_path, "rb") as f:
                 graph = pickle.load(f)
@@ -512,14 +524,11 @@ class SAGEGraphExpansionMethod(BaseMethod):
         if graph is None:
             return {}
 
-        index = self.indexes[dataset_key]
-        id_to_index = index["id_to_index"]
-        doc_ids = index["doc_ids"]
-        graph_nodes = self.graph_node_lookup.get(dataset_key, {})
+        id_to_index = self.indexes["id_to_index"]
         expanded_scores = {}
 
         for doc_id, base_score in base_scores.items():
-            graph_node = graph_nodes.get(str(doc_id))
+            graph_node = str(doc_id)
             if graph_node is None:
                 continue
 
@@ -552,6 +561,7 @@ class SAGEGraphExpansionMethod(BaseMethod):
         # determine the cache path for this configuration
         cache_path = self.cache_dir / f"graph_sage_{cache_key}.joblib"
 
+        # load the graphs
         self._load_graphs()
 
         # if the cache_path exists we load it
@@ -560,79 +570,54 @@ class SAGEGraphExpansionMethod(BaseMethod):
             cache = joblib.load(cache_path)
 
             if "indexes" in cache:
+                # reconstruct the cache
                 self.indexes = cache["indexes"]
-                self.query_source_by_text = cache.get("query_source_by_text", {})
-                for dataset_key, index in self.indexes.items():
-                    index["id_to_index"] = {
-                        doc_id: idx
-                        for idx, doc_id in enumerate(index.get("doc_ids", []))
-                    }
 
-                total_embeddings = sum(
-                    len(index.get("doc_ids", []))
-                    for index in self.indexes.values()
-                )
-                logger.info(f"Loaded graph_sage index with {total_embeddings} embeddings")
+                # just give out info on how many doc_ids in cache and are loaded
+                logger.info(f"Loaded graph_sage index with {len(self.indexes['doc_ids'])} embeddings")
                 return
 
-            logger.info("Ignoring old graph_sage cache format and rebuilding index.")
+            logger.info("Indexes which contains the embeddings was not in the cache, so cache has to be rebuilt.")
 
-        logger.info("Building dataset-aware graph_sage embedding indexes...")
-        texts_by_dataset = {"paper": [], "github_issue": []}
-        doc_ids_by_dataset = {"paper": [], "github_issue": []}
-        self.query_source_by_text = {}
+        logger.info("Building graph_sage embedding indexes...")
+
+        texts = []
+        # clear out old values just in case when rebuilding indexes
+        self.indexes["embeddings"] = None
+        self.indexes["doc_ids"].clear()
+        self.indexes["id_to_index"].clear()
+        self.indexes["id_to_dataset"].clear()
 
         for doc_id, doc in documents.items():
             dataset_key = self._dataset_key_for_doc(doc)
             if dataset_key is None:
                 continue
 
-            query_text = prepare_text(
-                doc,
-                include_title=True,
-                include_categorical=False,
-                include_hierarchical=False,
-            )
-            self.query_source_by_text.setdefault(query_text, dataset_key)
-
-            if not self._is_candidate(doc):
-                continue
-
             index_id = self._index_id_for_doc(doc_id, doc, dataset_key)
             if not index_id:
                 continue
 
-            text = prepare_text(doc, include_title=True, include_categorical=include_categorical,
-                            include_hierarchical=include_hierarchical)
-            texts_by_dataset[dataset_key].append(text)
-            doc_ids_by_dataset[dataset_key].append(index_id)
+            text = prepare_text(
+                doc,
+                include_title=True,
+                include_categorical=include_categorical,
+                include_hierarchical=include_hierarchical,
+            )
 
-        for dataset_key, texts in texts_by_dataset.items():
-            logger.info(f"Encoding {len(texts)} {dataset_key} documents...")
+            self.indexes["id_to_index"][index_id] = len(self.indexes["doc_ids"])
+            self.indexes["doc_ids"].append(index_id)
+            self.indexes["id_to_dataset"][index_id] = dataset_key
+            texts.append(text)
 
-            if texts:
-                embeddings = self.model.encode(
-                    texts, batch_size=32, show_progress_bar=True, convert_to_numpy=True
-                )
-            else:
-                embeddings = np.empty((0, 0))
-
-            doc_ids = doc_ids_by_dataset[dataset_key]
-            self.indexes[dataset_key] = {
-                "embeddings": embeddings,
-                "doc_ids": doc_ids,
-                "id_to_index": {
-                    doc_id: idx
-                    for idx, doc_id in enumerate(doc_ids)
-                },
-            }
+        logger.info(f"Encoding {len(texts)} documents...")
+        self.indexes["embeddings"] = self.model.encode(
+            texts, batch_size=32, show_progress_bar=True, convert_to_numpy=True)
 
         # save it to the cache path
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         joblib.dump(
             {
                 "indexes": self.indexes,
-                "query_source_by_text": self.query_source_by_text,
                 "include_hierarchical": include_hierarchical,
                 "include_categorical": include_categorical,
                 "cache_key": cache_key,
@@ -641,52 +626,68 @@ class SAGEGraphExpansionMethod(BaseMethod):
         )
         logger.info(
             "Graph_sage index built with "
-            f"{len(self.indexes['paper']['doc_ids'])} paper documents and "
-            f"{len(self.indexes['github_issue']['doc_ids'])} GitHub documents"
+            f"{len(self.indexes['doc_ids'])} documents."
         )
 
-    def _dataset_key_for_query(self, query: str, metadata=None):
-        if metadata:
-            source_type = metadata.get("source_type") or metadata.get("source_dataset")
-            if source_type == "github_issue" or (
-                isinstance(source_type, str) and "/" in source_type
-            ):
-                return "github_issue"
-            if source_type in {"paper", "query"}:
-                return "paper"
+    def retrieve(self, query: str, top_k: int = 10) -> List[Tuple[str, float]]:
+        index = self.indexes
 
-        dataset_key = self.query_source_by_text.get(query)
-        if dataset_key:
-            return dataset_key
-
-        raise ValueError(
-            "Could not determine whether query belongs to the paper or GitHub dataset. "
-            "Pass metadata with source_type, or build the index with queryable documents."
-        )
-
-    def retrieve(self, query: str, top_k: int = 10, metadata=None, **kwargs) -> List[Tuple[str, float]]:
-        dataset_key = self._dataset_key_for_query(query, metadata=metadata)
-        index = self.indexes[dataset_key]
+        # get all the important info of the index cache
         embeddings = index["embeddings"]
         doc_ids = index["doc_ids"]
+        id_to_index = index["id_to_index"]
+        id_to_dataset = index["id_to_dataset"]
 
         if embeddings is None or len(doc_ids) == 0:
             return []
 
+        # get the query_embedding
         query_embedding = self.model.encode(query, convert_to_numpy=True, show_progress_bar=False)
+        # calculate the similarities
         similarities = self._cosine_scores(embeddings, query_embedding)
 
+        # get the indices of the top_k*expansion_factor documents
         shortlist_size = min(len(doc_ids), max(top_k * self.expansion_factor, top_k))
         shortlist_indices = np.argsort(similarities)[-shortlist_size:][::-1]
 
-        combined_scores = {
-            doc_ids[idx]: float(similarities[idx])
-            for idx in shortlist_indices
+        combined_scores: dict[str, dict[str, float]] = {
+            "paper": {},
+            "github_issue": {},
         }
 
-        graph_scores = self._graph_neighbor_scores(dataset_key, combined_scores)
-        for doc_id, graph_score in graph_scores.items():
-            combined_scores[doc_id] = combined_scores.get(doc_id, 0.0) + graph_score
+        for idx in shortlist_indices:
+            doc_id = str(doc_ids[idx])
+            dataset = id_to_dataset.get(doc_id)
 
-        ranked = sorted(combined_scores.items(), key=lambda item: item[1], reverse=True)
+            if dataset == "paper":
+                combined_scores["paper"][doc_id] = float(similarities[idx])
+            elif dataset == "github_issue":
+                combined_scores["github_issue"][doc_id] = float(similarities[idx])
+
+        paper_graph_scores = self._graph_neighbor_scores("paper", combined_scores["paper"])
+        github_graph_scores = self._graph_neighbor_scores("github_issue", combined_scores["github_issue"])
+
+        for doc_id, graph_score in paper_graph_scores.items():
+            combined_scores["paper"][doc_id] = (
+                    combined_scores["paper"].get(doc_id, 0.0)
+                    + graph_score
+            )
+
+        for doc_id, graph_score in github_graph_scores.items():
+            combined_scores["github_issue"][doc_id] = (
+                    combined_scores["github_issue"].get(doc_id, 0.0)
+                    + graph_score
+            )
+
+        final_scores = {
+            **combined_scores["paper"],
+            **combined_scores["github_issue"],
+        }
+
+        ranked = sorted(
+            final_scores.items(),
+            key=lambda item: item[1],
+            reverse=True,
+        )
+
         return ranked[:top_k + 1]
