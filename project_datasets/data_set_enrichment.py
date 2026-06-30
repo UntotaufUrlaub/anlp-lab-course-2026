@@ -214,33 +214,33 @@ def make_paper_to_paper_query_enricher(random_number=200, seed=42):
             query_id = str(next_id)
             next_id += 1
 
-            new_docs.append({
-                "id": query_id,
-                "source_dataset": doc.get("source_dataset", "semantic_scholar"),
-                "source_type": "query",
-                "title": title,
-                "main_text": query_text,
-                "secondary_texts": [],
-                "structured_fields": doc.get("structured_fields", {
-                    "categorical": {},
-                    "hierarchical": {},
-                }),
-                "entities": doc.get("entities", {
-                    "people": [],
-                    "organizations": [],
-                    "projects": [],
-                    "topics": [],
-                }),
-                "relations": {"explicit_related_ids": related_ids},
-                "retrieval_metadata": {
-                    "is_queryable": True,
-                    "is_candidate": False,
-                },
-                "raw_source": doc.get("raw_source", {
-                    "native_id": None,
-                    "url": None,
-                }),
-            })
+            # new_docs.append({
+            #     "id": query_id,
+            #     "source_dataset": doc.get("source_dataset", "semantic_scholar"),
+            #     "source_type": "query",
+            #     "title": title,
+            #     "main_text": query_text,
+            #     "secondary_texts": [],
+            #     "structured_fields": doc.get("structured_fields", {
+            #         "categorical": {},
+            #         "hierarchical": {},
+            #     }),
+            #     "entities": doc.get("entities", {
+            #         "people": [],
+            #         "organizations": [],
+            #         "projects": [],
+            #         "topics": [],
+            #     }),
+            #     "relations": {"explicit_related_ids": related_ids},
+            #     "retrieval_metadata": {
+            #         "is_queryable": True,
+            #         "is_candidate": False,
+            #     },
+            #     "raw_source": doc.get("raw_source", {
+            #         "native_id": None,
+            #         "url": None,
+            #     }),
+            # })
 
             new_qrels.append({
                 "query_id": query_id,
