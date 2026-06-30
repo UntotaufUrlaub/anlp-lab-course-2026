@@ -6,12 +6,10 @@ import numpy as np
 import json
 
 try:
-    from methods import BaseMethod
+    from methods import BaseMethod, prepare_text
     from metrics import evaluate
 except ImportError:
-    from project_code.methods import (
-        BaseMethod,
-    )
+    from project_code.methods import BaseMethod, prepare_text
     from project_code.metrics import evaluate
 
 logger = logging.getLogger(__name__)
@@ -56,7 +54,7 @@ class BenchmarkRunner:
         Returns:
         - Dictionary with aggregated metrics
         """
-        self._prepare_index(method, include_labels=include_labels, use_cache=use_cache)
+        self._prepare_index(method, use_cache=use_cache)
 
         logger.info(f"\n{'=' * 60}")
         logger.info(f"Running {method_name}...")
@@ -73,6 +71,9 @@ class BenchmarkRunner:
                 continue
 
             query_doc = self.documents[query_id]
+            query_text = prepare_text(
+                query_doc, include_title=True, include_labels=True
+            )
 
             # Retrieve results (exclude query itself)
             # Use max of k_values to ensure we get enough results
@@ -120,9 +121,7 @@ class BenchmarkRunner:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _prepare_index(
-        self, method: BaseMethod, include_labels: bool, use_cache: bool
-    ) -> None:
+    def _prepare_index(self, method: BaseMethod, use_cache: bool) -> None:
         """Load cached index or build from scratch, then optionally save."""
         if use_cache and method.load_cache(self.cache_dir):
             logger.info(
@@ -131,7 +130,7 @@ class BenchmarkRunner:
             return
 
         logger.info(f"[{type(method).__name__}] Building index...")
-        method.build_index(self.documents, include_labels=include_labels)
+        method.build_index(self.documents)
 
         if use_cache:
             method.save_cache(self.cache_dir)

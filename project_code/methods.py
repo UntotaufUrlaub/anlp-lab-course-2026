@@ -8,10 +8,13 @@ import pickle
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Dict, List, Tuple
-from utils import prepare_text, extract_metadata_text
+from utils import prepare_text_dennis, extract_metadata_text
 
 import numpy as np
-from sklearn.decomposition import PCA
+import joblib
+import hashlib
+import json
+import torch
 
 # try:
 from rank_bm25 import BM25Okapi
@@ -28,12 +31,102 @@ from sentence_transformers import SentenceTransformer
 
 logger = logging.getLogger(__name__)
 
+PROJECT_ROOT = Path(__file__).resolve().parent
+CACHE_DIR = PROJECT_ROOT / "cache"
+
+
+# helper method to rewrite text format into one nice string
+def _as_text_list(value):
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(v) for v in value if v]
+    if isinstance(value, dict):
+        items = []
+        for v in value.values():
+            items.extend(_as_text_list(v))
+        return items
+    return [str(value)]
+
+
+def prepare_text(
+    doc: Dict,
+    include_title: bool = True,
+    include_labels: bool = False,
+) -> str:
+    """Prepare document text for retrieval."""
+    text_parts = []
+
+    if include_title and doc.get("title"):
+        text_parts.append(doc["title"])
+
+    structured = doc.get("structured_fields") or {}
+
+    if include_labels:
+        categorical = structured.get("categorical")
+        text_parts.append(" ".join(_as_text_list(categorical)))
+        hierarchical = structured.get("hierarchical")
+        text_parts.append(" ".join(_as_text_list(hierarchical)))
+
+    if doc.get("main_text"):
+        text_parts.append(doc["main_text"])
+
+    return " ".join(text_parts)
+
+
+# create hash function to create a bm25 and dense embedding index depending on configuration of dataset
+# to later load with joblib efficiently
+def make_cache_key(
+    documents: Dict,
+    method: str,
+    model: str = None,
+    include_labels: bool = True,
+) -> str:
+    """Create a stable hash for the BM25 index input."""
+    hasher = hashlib.sha256()
+
+    if method == "dense" or method == "graph_sage" or method == "metadata_aware":
+        config = {
+            "method": method,
+            "model": model,
+            "include_labels": include_labels,
+            "num_documents": len(documents),
+        }
+    else:
+        config = {
+            "method": method,
+            "include_labels": include_labels,
+            "num_documents": len(documents),
+        }
+    hasher.update(json.dumps(config, sort_keys=True).encode("utf-8"))
+
+    for doc_id in sorted(documents.keys()):
+        doc = documents[doc_id]
+
+        relevant_data = {
+            "id": doc_id,
+            "title": doc.get("title"),
+            "main_text": doc.get("main_text"),
+        }
+
+        structured = doc.get("structured_fields", {})
+
+        if include_labels:
+            relevant_data["categorical"] = structured.get("categorical")
+            relevant_data["hierarchical"] = structured.get("hierarchical")
+
+        hasher.update(
+            json.dumps(relevant_data, sort_keys=True, default=str).encode("utf-8")
+        )
+
+    return hasher.hexdigest()[:12]
+
 
 class BaseMethod(ABC):
     """Base class that all retrieval methods must derive from."""
 
     @abstractmethod
-    def build_index(self, documents: Dict, include_labels: bool = False) -> None:
+    def build_index(self, documents: Dict) -> None:
         raise NotImplementedError
 
     @abstractmethod
@@ -53,29 +146,68 @@ class BaseMethod(ABC):
 
 
 class BM25Baseline(BaseMethod):
-    """BM25 lexical retrieval method."""
+    """BM25 lexical retrieval method with joblib caching."""
 
-    def __init__(self):
+    def __init__(self, include_labels: bool = False):
         self.bm25 = None
         self.corpus = []
         self.doc_ids = []
+        self.cache_dir = CACHE_DIR
+        self.include_labels = include_labels
 
-    def build_index(self, documents: Dict, include_labels: bool = False) -> None:
+    def build_index(self, documents: Dict) -> None:
+        # create unique cache_key for this document configuration
+        cache_key = make_cache_key(
+            documents, method="bm25", include_labels=self.include_labels
+        )
+        # determine the cache path for this configuration
+        cache_path = self.cache_dir / f"bm25_{cache_key}.joblib"
+
+        # if the cache_path exists we load it
+        if cache_path.exists():
+            logger.info(f"Loading BM25 index from cache: {cache_path}")
+            cache = joblib.load(cache_path)
+
+            self.bm25 = cache["bm25"]
+            self.corpus = cache["corpus"]
+            self.doc_ids = cache["doc_ids"]
+
+            logger.info(f"Loaded BM25 index with {len(self.corpus)} documents")
+            return
+
+        # build the index
         logger.info("Building BM25 index...")
         self.corpus = []
         self.doc_ids = []
 
         for doc_id, doc in documents.items():
-            text = prepare_text(doc, include_title=True, include_labels=include_labels)
+            text = prepare_text(
+                doc, include_title=True, include_labels=self.include_labels
+            )
             tokens = text.lower().split()
             self.corpus.append(tokens)
             self.doc_ids.append(doc_id)
 
         self.bm25 = BM25Okapi(self.corpus)
+        # save it to the cache path
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        joblib.dump(
+            {
+                "bm25": self.bm25,
+                "corpus": self.corpus,
+                "doc_ids": self.doc_ids,
+                "include_labels": self.include_labels,
+                "cache_key": cache_key,
+            },
+            cache_path,
+        )
         logger.info(f"BM25 index built with {len(self.corpus)} documents")
+        logger.info(f"Saved BM25 index to cache: {cache_path}")
 
     def retrieve(self, query_doc: Dict, top_k: int = 10) -> List[Tuple[str, float]]:
-        query_text = prepare_text(query_doc, include_title=True, include_labels=False)
+        query_text = prepare_text(
+            query_doc, include_title=True, include_labels=self.include_labels
+        )
         query_tokens = query_text.lower().split()
         scores = self.bm25.get_scores(query_tokens)
         top_k_indices = np.argsort(scores)[-(top_k + 1) :][::-1]
@@ -89,16 +221,40 @@ class DenseEmbeddingBaseline(BaseMethod):
         self, model_name: str = "all-MiniLM-L6-v2", include_labels: bool = False
     ):
         logger.info(f"Loading Sentence Transformer model: {model_name}")
-        self.model = SentenceTransformer(model_name)
+        # include gpu if possible for speed up
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.model = SentenceTransformer(model_name, device=device)
         logger.info(f"Sentence Transformer model loaded: {model_name}")
+        logger.info(f"Using device: {device}")
+        self.model_name = model_name
         self.embeddings = []
         self.doc_ids = []
         self.include_labels = include_labels
+        self.cache_dir = CACHE_DIR
 
     def build_index(self, documents: Dict, **kwargs) -> None:
-        logger.info(
-            f"Building embedding index... with include_labels {self.include_labels}"
+        # create unique cache_key for this document configuration
+        cache_key = make_cache_key(
+            documents,
+            include_labels=self.include_labels,
+            method="dense",
+            model=self.model_name,
         )
+        # determine the cache path for this configuration
+        cache_path = self.cache_dir / f"dense_{cache_key}.joblib"
+
+        # if the cache_path exists we load it
+        if cache_path.exists():
+            logger.info(f"Loading dense index from cache: {cache_path}")
+            cache = joblib.load(cache_path)
+
+            self.embeddings = cache["embeddings"]
+            self.doc_ids = cache["doc_ids"]
+
+            logger.info(f"Loaded dense index with {len(self.embeddings)} embeddings")
+            return
+
+        logger.info("Building embedding index...")
         self.embeddings = []
         self.doc_ids = []
 
@@ -115,13 +271,28 @@ class DenseEmbeddingBaseline(BaseMethod):
         self.embeddings = self.model.encode(
             texts, batch_size=32, show_progress_bar=True, convert_to_numpy=True
         )
+
+        # save it to the cache path
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        joblib.dump(
+            {
+                "embeddings": self.embeddings,
+                "doc_ids": self.doc_ids,
+                "include_labels": self.include_labels,
+                "cache_key": cache_key,
+            },
+            cache_path,
+        )
+
         logger.info(f"Embedding index built with {len(self.embeddings)} documents")
 
     def retrieve(self, query_doc: Dict, top_k: int = 10) -> List[Tuple[str, float]]:
         query_text = prepare_text(
             query_doc, include_title=True, include_labels=self.include_labels
         )
-        query_embedding = self.model.encode(query_text, convert_to_numpy=True)
+        query_embedding = self.model.encode(
+            query_text, convert_to_numpy=True, show_progress_bar=False
+        )
         similarities = np.dot(self.embeddings, query_embedding) / (
             np.linalg.norm(self.embeddings, axis=1) * np.linalg.norm(query_embedding)
         )
@@ -145,7 +316,8 @@ class CHARMInspiredMethod(BaseMethod):
         field_weights: Dict[str, float] = None,
         first_stage_k: int = 10,
     ):
-        self.model = SentenceTransformer(model_name)
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.model = SentenceTransformer(model_name, device=device)
         self.field_weights = field_weights or {
             "metadata": 2.0,
             "title": 1.5,
@@ -231,7 +403,9 @@ class SAGEGraphExpansionMethod(BaseMethod):
         model_name: str = "all-MiniLM-L6-v2",
         graph_weight: float = 0.15,
         expansion_factor: int = 5,
+        include_labels: bool = True,
     ):
+        self.include_labels = include_labels
         # directory where graphs are
         graph_dir = PROJECT_ROOT / "graphs"
         # individual graphs of paper and github_issue dataset
@@ -375,14 +549,10 @@ class SAGEGraphExpansionMethod(BaseMethod):
     def build_index(
         self,
         documents: Dict,
-        include_hierarchical: bool = False,
-        include_categorical: bool = False,
     ) -> None:
         # create unique cache_key for this document configuration
         cache_key = make_cache_key(
             documents,
-            include_hierarchical=include_hierarchical,
-            include_categorical=include_categorical,
             method="graph_sage",
             model=self.model_name,
         )
@@ -431,10 +601,7 @@ class SAGEGraphExpansionMethod(BaseMethod):
                 continue
 
             text = prepare_text(
-                doc,
-                include_title=True,
-                include_categorical=include_categorical,
-                include_hierarchical=include_hierarchical,
+                doc, include_title=True, include_labels=self.include_labels
             )
 
             self.indexes["id_to_index"][index_id] = len(self.indexes["doc_ids"])
@@ -452,8 +619,7 @@ class SAGEGraphExpansionMethod(BaseMethod):
         joblib.dump(
             {
                 "indexes": self.indexes,
-                "include_hierarchical": include_hierarchical,
-                "include_categorical": include_categorical,
+                "include_labels": self.include_labels,
                 "cache_key": cache_key,
             },
             cache_path,
@@ -462,7 +628,10 @@ class SAGEGraphExpansionMethod(BaseMethod):
             "Graph_sage index built with " f"{len(self.indexes['doc_ids'])} documents."
         )
 
-    def retrieve(self, query: str, top_k: int = 10) -> List[Tuple[str, float]]:
+    def retrieve(self, query: dict, top_k: int = 10) -> List[Tuple[str, float]]:
+        query = prepare_text(
+            query, include_title=True, include_labels=self.include_labels
+        )
         index = self.indexes
 
         # get all the important info of the index cache

@@ -75,9 +75,9 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--methods",
         nargs="+",
-        default=["dense_labels", "charm"],
-        choices=["dense_labels", "charm"],
-        help="Experimental methods to benchmark against baseline. Available: dense_labels, charm",
+        default=["charm"],
+        choices=["dense_labels", "charm", "graph_sage"],
+        help="Experimental methods to benchmark against baseline. Available: dense_labels, charm, graph_sage",
     )
     parser.add_argument("--hyperparam-search", action="store_true")
     parser.add_argument("--n-trials", type=int, default=20)
@@ -132,7 +132,7 @@ def extract_metadata_text(doc: Dict) -> str:
 
 
 # TODO does order of concatenating matters?
-def prepare_text(
+def prepare_text_dennis(
     doc: Dict, include_title: bool = True, include_labels: bool = False
 ) -> str:
     text_parts = []

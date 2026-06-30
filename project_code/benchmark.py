@@ -25,6 +25,7 @@ try:
         BM25Baseline,
         DenseEmbeddingBaseline,
         CHARMInspiredMethod,
+        SAGEGraphExpansionMethod,
     )
     from utils import parse_args, _flatten_hierarchical
     from benchmarkRunner import BenchmarkRunner
@@ -33,6 +34,7 @@ except ImportError:
         BM25Baseline,
         DenseEmbeddingBaseline,
         CHARMInspiredMethod,
+        SAGEGraphExpansionMethod,
     )
     from project_code.utils import parse_args, _flatten_hierarchical
     from project_code.benchmarkRunner import BenchmarkRunner
@@ -277,6 +279,10 @@ EXPERIMENTAL_METHODS = {
         "label": "DenseEmbedding+Labels",
     },
     "charm": {"builder": lambda args: CHARMInspiredMethod(), "label": "charm"},
+    "graph_sage": {
+        "builder": lambda args: SAGEGraphExpansionMethod(),
+        "label": "GraphSage",
+    },
 }
 
 
