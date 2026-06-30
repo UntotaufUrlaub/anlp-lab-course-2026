@@ -4,10 +4,10 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 
-
-PROJECT_ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 RESULTS_DIR = PROJECT_ROOT / "results"
 VISUALIZATION_DIR = RESULTS_DIR / "visualizations"
+
 
 def _as_list(value):
     if isinstance(value, (str, Path)):
@@ -101,7 +101,7 @@ def _selected_metrics(results_by_method, description):
     return metrics
 
 
-def visualize_bar_chart(input_results, description: dict, sameMethod:bool=False):
+def visualize_bar_chart(input_results, description: dict, sameMethod: bool = False):
     """
     Create a grouped bar chart comparing benchmark methods across metrics.
 
@@ -158,10 +158,7 @@ def visualize_bar_chart(input_results, description: dict, sameMethod:bool=False)
 
     for method_index, method_name in enumerate(method_names):
         offset = (method_index - (len(method_names) - 1) / 2) * bar_width
-        values = [
-            results_by_method[method_name].get(metric, 0)
-            for metric in metrics
-        ]
+        values = [results_by_method[method_name].get(metric, 0) for metric in metrics]
         ax.bar(
             [position + offset for position in x_positions],
             values,
@@ -199,15 +196,16 @@ def visualize_bar_chart(input_results, description: dict, sameMethod:bool=False)
 
     return output_path
 
+
 if __name__ == "__main__":
+    # TODO make this dynamical, extend the methods_results.json so that it contains the config to display in the InfoVis
     description = {
         "method": "NeutralGraphSAGE02",
-        "k": [2,5,10],
+        "k": [2, 5, 10],
         "batchsize": 500,
         "seed": 42,
         "documentsize": "all",
         "hierarchical": False,
         "categorical": False,
     }
-    visualize_bar_chart(["method_comparison_redid_documents.json"],
-                         description)
+    visualize_bar_chart(["method_results.json"], description)
