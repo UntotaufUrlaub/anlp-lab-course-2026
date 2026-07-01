@@ -26,6 +26,7 @@ try:
         DenseEmbeddingBaseline,
         CHARMInspiredMethod,
         SAGEGraphExpansionMethod,
+        GNNRet,
     )
     from utils import parse_args, _flatten_hierarchical
     from benchmarkRunner import BenchmarkRunner
@@ -33,6 +34,7 @@ except ImportError:
     from project_code.methods import (
         BM25Baseline,
         DenseEmbeddingBaseline,
+        GNNRet,
         CHARMInspiredMethod,
         SAGEGraphExpansionMethod,
     )
@@ -279,6 +281,10 @@ EXPERIMENTAL_METHODS = {
     "graph_sage": {
         "builder": lambda args: SAGEGraphExpansionMethod(),
         "label": "GraphSage",
+    },
+    "gnn_ret": {
+        "builder": lambda args: GNNRet(model_name=args.embedding_model, epochs=20, lr=0.01),
+        "label": "GNNRet",
     },
 }
 
