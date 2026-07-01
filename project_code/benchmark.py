@@ -443,6 +443,13 @@ def main():
     for method_key in args.methods:
         method_config = EXPERIMENTAL_METHODS[method_key]
         method = method_config["builder"](args)
+        if isinstance(method, GNNRet):
+            method.build_index(documents)
+            qrels_list = [
+                {"query_id": qid, "candidate_ids": list(cids)}
+                for qid, cids in qrels.items()
+            ]
+            method.train(qrels_list)
         runner.run_method(
             method_config["label"],
             method,

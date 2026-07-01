@@ -78,8 +78,8 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--methods",
         nargs="+",
-        default=["charm", "graph_sage"],
-        choices=["dense_labels", "charm", "graph_sage"],
+        default=["charm", "graph_sage", "gnn_ret"],
+        choices=["dense_labels", "charm", "graph_sage", "gnn_ret"],
         help="Experimental methods to benchmark against baseline. Available: dense_labels, charm, graph_sage",
     )
     parser.add_argument("--hyperparam-search", action="store_true")
