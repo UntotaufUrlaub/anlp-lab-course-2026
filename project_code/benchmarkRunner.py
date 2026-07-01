@@ -89,8 +89,8 @@ class BenchmarkRunner:
             max_debug_queries = 5 if self.debug else 2
             if debug_count < max_debug_queries:
                 logger.info(
-                    f"  Query {query_id}: {
-                        len(rankings)} retrieved, {relevant_count} total relevant, {matched_relevant} matched"
+                    f"  Query {query_id}: {len(rankings)} retrieved, {relevant_count} "
+                    f"total relevant, {matched_relevant} matched"
                 )
                 if len(rankings) > 0:
                     logger.info(f"    Top retrieved: {rankings[:5]}")
@@ -179,11 +179,10 @@ class BenchmarkRunner:
             if "query_details" in metrics:
                 print("\n  QUERY DETAILS:")
                 for detail in metrics["query_details"][:5]:
-                    print(f"    query_id={
-                            detail['query_id']} retrieved={
-                            detail['retrieved']} " f"matched={
-                            detail['matched']} top={
-                            detail['top_retrieved']}")
+                    print(f"    query_id={detail['query_id']} "
+                          f"retrieved={detail['retrieved']} " 
+                          f"matched={detail['matched']} "
+                          f"top={detail['top_retrieved']}")
                 if len(metrics["query_details"]) > 5:
                     print(
                         f"    ...and {len(metrics['query_details']) - 5} more queries"

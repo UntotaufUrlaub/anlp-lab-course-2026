@@ -11,18 +11,18 @@ def create_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--docs-path",
-        default="output/documents_enriched_03.jsonl",
+        default="project_datasets/output/documents_enriched_03.jsonl",
         help="Path to documents JSONL file",
     )
     # TODO use qrels instead of enriched bc citation matching?
     parser.add_argument(
         "--qrels-path",
-        default="output/qrels_enriched_02.jsonl",
+        default="project_datasets/output/qrels_enriched_02.jsonl",
         help="Path to qrels JSONL file",
     )
     parser.add_argument(
         "--output-path",
-        default="results/method_results.json",
+        default="project_code/results/test_results.json",
         help="Path to save results",
     )
     parser.add_argument(

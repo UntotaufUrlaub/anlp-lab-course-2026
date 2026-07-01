@@ -18,3 +18,4 @@ project_code/results/
 project_datasets/cache/
 *.parquet
 *.jsonl
+/project_code/graphs/
