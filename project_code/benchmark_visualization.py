@@ -1,8 +1,14 @@
+import hashlib
 import json
 import re
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+
+try:
+    from utils import DEFAULT_RESULTS_FILENAME
+except ImportError:
+    from project_code.utils import DEFAULT_RESULTS_FILENAME
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 RESULTS_DIR = PROJECT_ROOT / "results"
@@ -25,7 +31,16 @@ def _load_result_file(result_file):
         raise FileNotFoundError(f"Result file not found: {path}")
 
     with open(path, "r", encoding="utf-8") as f:
-        return path, json.load(f)
+        payload = json.load(f)
+
+    if (
+        isinstance(payload, dict)
+        and "results" in payload
+        and isinstance(payload["results"], dict)
+    ):
+        return path, payload["results"], payload.get("benchmark_config", {})
+
+    return path, payload, {}
 
 
 def _description_slug(description):
@@ -41,10 +56,18 @@ def _description_slug(description):
 
     slug = "_".join(parts).lower()
     slug = re.sub(r"[^a-z0-9_.-]+", "-", slug)
-    return slug.strip("-") or "comparison"
+    slug = slug.strip("-") or "comparison"
+
+    if len(slug) > 80:
+        digest = hashlib.md5(
+            json.dumps(description, sort_keys=True, default=str).encode("utf-8")
+        ).hexdigest()[:10]
+        slug = f"{slug[:70]}-{digest}"
+
+    return slug
 
 
-def _format_description(description):
+def _format_description(description, max_line_length: int = 70):
     if not description:
         return ""
 
@@ -55,7 +78,24 @@ def _format_description(description):
             value = ", ".join(str(item) for item in value)
         parts.append(f"{key}: {value}")
 
-    return " | ".join(parts)
+    text = " | ".join(parts)
+    if len(text) <= max_line_length:
+        return text
+
+    wrapped_lines = []
+    current_line = ""
+    for part in parts:
+        if not current_line:
+            current_line = part
+        elif len(current_line) + len(part) + 3 <= max_line_length:
+            current_line = f"{current_line} | {part}"
+        else:
+            wrapped_lines.append(current_line)
+            current_line = part
+    if current_line:
+        wrapped_lines.append(current_line)
+
+    return "\n".join(wrapped_lines)
 
 
 def _metric_sort_key(metric):
@@ -101,7 +141,9 @@ def _selected_metrics(results_by_method, description):
     return metrics
 
 
-def visualize_bar_chart(input_results, description: dict, sameMethod: bool = False):
+def visualize_bar_chart(
+    input_results, description: dict = None, sameMethod: bool = False
+):
     """
     Create a grouped bar chart comparing benchmark methods across metrics.
 
@@ -118,8 +160,10 @@ def visualize_bar_chart(input_results, description: dict, sameMethod: bool = Fal
     result_files = _as_list(input_results)
 
     results_by_method = {}
+    benchmark_config = {}
     for result_file in result_files:
-        path, result_data = _load_result_file(result_file)
+        path, result_data, file_config = _load_result_file(result_file)
+        benchmark_config = benchmark_config or file_config
 
         if not isinstance(result_data, dict):
             raise ValueError(f"Result file must contain a JSON object: {path}")
@@ -140,6 +184,9 @@ def visualize_bar_chart(input_results, description: dict, sameMethod: bool = Fal
 
     if not results_by_method:
         raise ValueError("No method results found in the provided result files.")
+
+    if not description and benchmark_config:
+        description = benchmark_config
 
     metrics = _selected_metrics(results_by_method, description)
     if not metrics:
@@ -176,7 +223,7 @@ def visualize_bar_chart(input_results, description: dict, sameMethod: bool = Fal
     if subtitle:
         ax.set_title(
             subtitle,
-            fontsize=10,
+            fontsize=9,
             pad=10,
         )
 
@@ -198,14 +245,8 @@ def visualize_bar_chart(input_results, description: dict, sameMethod: bool = Fal
 
 
 if __name__ == "__main__":
-    # TODO make this dynamical, extend the methods_results.json so that it contains the config to display in the InfoVis
-    description = {
-        "method": "NeutralGraphSAGE02",
-        "k": [2, 5, 10],
-        "batchsize": 500,
-        "seed": 42,
-        "documentsize": "all",
-        "hierarchical": False,
-        "categorical": False,
-    }
-    visualize_bar_chart(["method_results.json"], description)
+    result_path = PROJECT_ROOT / "results" / DEFAULT_RESULTS_FILENAME
+    if result_path.exists():
+        visualize_bar_chart([result_path])
+    else:
+        raise FileNotFoundError(f"No benchmark results found at {result_path}")

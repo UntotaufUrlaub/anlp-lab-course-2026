@@ -266,8 +266,12 @@ class BenchmarkRunner:
 
         print("\n" + "=" * 80)
 
-    def save_results(self, output_path: str):
-        """Save results to JSON file."""
-        with open(output_path, "w") as f:
-            json.dump(self.results, f, indent=2)
+    def save_results(self, output_path: str, benchmark_config: Optional[Dict] = None):
+        """Save results and benchmark configuration to a JSON file."""
+        payload = {
+            "benchmark_config": benchmark_config or {},
+            "results": self.results,
+        }
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2)
         logger.info(f"Results saved to {output_path}")

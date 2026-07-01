@@ -3,6 +3,9 @@
 import argparse
 from typing import Any, Dict, List, Tuple
 
+DEFAULT_RESULTS_FILENAME = "method_results.json"
+DEFAULT_RESULTS_PATH = f"results/{DEFAULT_RESULTS_FILENAME}"
+
 
 def create_parser() -> argparse.ArgumentParser:
     """Create and return the argument parser for the benchmark script."""
@@ -11,18 +14,18 @@ def create_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--docs-path",
-        default="project_datasets/output/documents_enriched_03.jsonl",
+        default="output/documents_enriched_03.jsonl",
         help="Path to documents JSONL file",
     )
     # TODO use qrels instead of enriched bc citation matching?
     parser.add_argument(
         "--qrels-path",
-        default="project_datasets/output/qrels_enriched_02.jsonl",
+        default="output/qrels_enriched_02.jsonl",
         help="Path to qrels JSONL file",
     )
     parser.add_argument(
         "--output-path",
-        default="project_code/results/test_results.json",
+        default=DEFAULT_RESULTS_PATH,
         help="Path to save results",
     )
     parser.add_argument(
@@ -75,7 +78,7 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--methods",
         nargs="+",
-        default=["charm"],
+        default=["charm", "graph_sage"],
         choices=["dense_labels", "charm", "graph_sage"],
         help="Experimental methods to benchmark against baseline. Available: dense_labels, charm, graph_sage",
     )

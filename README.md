@@ -1,24 +1,26 @@
 ﻿# anlp-lab-course-2026
 
+## Overview
+
+This repository contains a retrieval benchmark pipeline for aligning a mixed corpus of GitHub issues and scientific papers, enriching it with metadata, and evaluating retrieval methods.
+
 ## Requirements
 
-Python 3.12.0
-A virtual environment e.g. MyVenv with `python -m venv MyVenv`
-
-## Benchmark Pipeline
-
-This repository contains the benchmark pipeline for dataset acquisition, alignment, and retrieval evaluation.
+- Python 3.12.0
+- A virtual environment such as MyVenv created with `python -m venv MyVenv`
 
 ## Core pipeline files
 
-- `project_datasets/data_set_alignment.py` — download, normalize, align, and export documents/qrels
-- `project_datasets/json_processing.py` — process raw GitHub issue JSON and normalize labels
-- `code/benchmark.py` — run retrieval benchmarks on the aligned dataset
-- `code/methods.py` — retrieval method implementations used by the benchmark
-- `code/validate_benchmark.py` — verify data files, benchmark script, and environment
-- `requirements.txt` — the required pip packages
+- `project_datasets/data_set_alignment.py` — download, normalize, align, and export the base documents and qrels files
+- `project_datasets/json_processing.py` — preprocess and normalize GitHub issue metadata
+- `project_datasets/data_set_enrichment.py` — run the three enrichment stages over the aligned dataset
+- `project_code/benchmark.py` — run retrieval benchmarks on the aligned/enriched corpus
+- `project_code/methods.py` — retrieval method implementations used by the benchmark
+- `project_code/utils.py` — shared CLI parsing and text preparation helpers for the benchmark
+- `project_code/validate_benchmark.py` — verify input data, dependencies, and output paths
+- `requirements.txt` — required Python packages
 
-## 1. Required Set up
+## 1. Set up the environment
 
 ### 1) Activate the virtual environment
 
@@ -28,7 +30,7 @@ Windows:
 MyVenv\Scripts\activate.bat
 ```
 
-or in powershell:
+PowerShell:
 
 ```powershell
 .\MyVenv\Scripts\Activate.ps1
@@ -46,7 +48,9 @@ source MyVenv/bin/activate
 pip install -r requirements.txt
 ```
 
-## 2. Download datasets and build aligned dataset files
+## 2. Build the aligned dataset
+
+Run:
 
 ```bash
 python project_datasets/data_set_alignment.py
@@ -54,106 +58,62 @@ python project_datasets/data_set_alignment.py
 
 This script will:
 
-- download the GitHub issues dataset via `kagglehub`
-- normalize and align labels using `json_processing.normalise_labels()`
-- download the LitSearch query and corpus dataset via `datasets`
-- write aligned outputs to:
-  - `project_datasets/output/documents.jsonl`
-  - `project_datasets/output/qrels.jsonl`
+- download the GitHub issues dataset through `kagglehub`
+- normalize and align labels with the preprocessing helpers in `project_datasets/json_processing.py`
+- download the LitSearch query and corpus datasets through `datasets`
+- write the base files to:
+  - `output/documents.jsonl`
+  - `output/qrels.jsonl`
 
-Use `python project_datasets/data_set_alignment.py --use-cache` to reuse cached dataset files when available.
+To reuse cached input data when available, run:
 
-## 3. Dataset enrichment
+```bash
+python project_datasets/data_set_alignment.py --use-cache
+```
+
+## 3. Enrich the dataset
+
+Run:
+
 ```bash
 python project_datasets/data_set_enrichment.py
 ```
-This script will:
 
-- run the following 3 data enrichment steps, provided the caches with collected API information exist
-  (`project/datasets/cache/paper_cache.json`, `project/datasets/cache/hierarchy_cache_nano_batch.json`)
-- enrichment steps can be done again if anything in the pipeline changes by running
-`python project_datasets/data_set_enrichment.py --overwrite-metadata` or
-`python project_datasets/data_set_enrichment.py --readd-paper-to-paper` or
-`python project_datasets/data_set_enrichment.py --overwrite-hierarchy` respectively. 
-It is advised that the order of enrichment of 1), 2) and 3) should
-be kept.
+The enrichment pipeline runs three stages in order and writes progressively richer versions of the dataset:
 
-The dataset enrichment pipeline incrementally extends the aligned corpus with additional metadata.
-Each enrichment stage creates a new dataset version while preserving all information from previous stages.
+1. Metadata enrichment
+   - input: `output/documents.jsonl`
+   - output: `output/documents_enriched_01.jsonl`
+   - adds Semantic Scholar metadata such as authors, affiliations, fields of study, venue/journal information, and publication types
+   - uses the cache file `cache/paper_cache.json`
 
-### 1) Semantic Scholar metadata
-documents.jsonl
-→ documents_enriched_01.jsonl
+2. Paper-to-paper query enrichment
+   - input: `output/documents_enriched_01.jsonl` and `output/qrels.jsonl`
+   - outputs: `output/documents_enriched_02.jsonl` and `output/qrels_enriched_02.jsonl`
+   - converts a subset of papers into retrieval queries based on citation/related-paper links
+   - uses a fixed seed for reproducibility
 
-The paper subset of the unified corpus is enriched using the Semantic Scholar Graph API.
-Semantic Scholar enrichment was available for 62,641 of 64,183 paper records (~97.6% coverage).
+3. Hierarchy enrichment
+   - input: `output/documents_enriched_02.jsonl`
+   - output: `output/documents_enriched_03.jsonl`
+   - adds hierarchical scientific metadata such as affiliation paths, field-of-study paths, and method paths
+   - uses the cache file `cache/hierarchy_cache_nano_batch.json`
 
-The enrichment step adds:
-- Authors
-- Author affiliations
-- Fields of study
-- Publication venue
-- Journal information
-- Publication types
+You can rerun individual stages with:
 
-The retrieved metadata is stored locally in:
-`project/datasets/cache/paper_cache.json`
-to avoid repeated API calls.
-The API querying process can be found in `project_datasets/SemanticScholar_API_calling.py`.
-
-### 2) Paper to Paper retrieval queries
-documents_enriched_01.jsonl
-→ documents_enriched_02.jsonl
-
-qrels.jsonl
-→ qrels_02.jsonl
-
-A subset of papers is converted into retrieval queries using citation relationships already present in the corpus.
-For each selected paper:  
-Query text = title + abstract  
-Relevant documents = cited or explicitly related papers  
-Only a random subset of papers is converted into queries by default. 
-A fixed random seed (Random(42)) is used to ensure reproducibility.
-
-### 3) Hierarchy enrichment
-documents_enriched_02.jsonl
-→ documents_enriched_03.jsonl
-
-Hierarchical scientific metadata is extracted using an LLM.
-The enrichment produces three hierarchy structures:
+```bash
+python project_datasets/data_set_enrichment.py --overwrite-metadata
+python project_datasets/data_set_enrichment.py --readd-paper-to-paper
+python project_datasets/data_set_enrichment.py --overwrite-hierarchy
 ```
-{
-  "affiliations": [
-    {
-      "country": "",
-      "sector": "",
-      "organization": ""
-    }
-  ],
-  "field_of_study_path": {
-    "field": "",
-    "research_area": "",
-    "topic_family": "",
-    "specific_topic": ""
-  },
-  "method_path": {
-    "method_family": "",
-    "method_category": "",
-    "specific_method": ""
-  }
-}
-```
-A paper may contain multiple affiliations; therefore affiliations is represented as a list of affiliation objects.
-The hierarchy extraction is performed using OpenAI GPT-5 Nano.
-Hierarchy outputs are stored locally in:
-`project/datasets/cache/hierarchy_cache_nano_batch.json`
-to allow interrupted enrichment runs to be resumed without repeating previously completed API requests.
-The API querying process can be found in `project_datasets/OpenAI_API_calling.py`
 
-#### Notes on data quality
-- 6,197 of 64,183 papers (~9.6%) contain neither title nor abstract and are excluded from hierarchy enrichment.
-- Invalid or unrecoverable outputs are marked with an error entry and do not overwrite existing metadata.
-- to get full statistics on errors and categories of the LLM output run `python project_datasets paper_validation.py`
+The order of the three stages should be preserved.
+
+### Notes on the enrichment outputs
+
+- The hierarchy step may leave some entries marked with an error object when the LLM output is invalid or unrecoverable.
+- The enrichment caches allow interrupted runs to resume without re-querying data that was already collected.
+- A validation helper for hierarchy outputs is available in `project_datasets/paper_validation.py`.
 
 ## 4. Validate the benchmark setup
 
@@ -161,61 +121,87 @@ The API querying process can be found in `project_datasets/OpenAI_API_calling.py
 python project_code/validate_benchmark.py
 ```
 
-## 5.  Run the retrieval benchmark (takes very... long)
+This checks for the presence and readability of the base data files, the benchmark script, and the expected output directory.
+
+## 5. Experimental methods and baselines
+
+The benchmark compares a small set of retrieval strategies that differ in how they use document structure, metadata, and graph information.
+
+### Baselines
+
+- `BM25Baseline` — a classical lexical baseline that ranks documents by term overlap using BM25.
+- `DenseEmbeddingBaseline` — a dense retrieval baseline that embeds documents and queries with a sentence-transformer model and ranks by cosine similarity.
+
+### Experimental methods
+
+- `CHARMInspiredMethod` — a structure-aware retrieval method that combines metadata, title, and main-text signals with weighted field embeddings and a two-stage reranking strategy.
+- `SAGEGraphExpansionMethod` — a graph-enhanced retrieval method that expands retrieval scores using neighborhood information from paper and issue graphs.
+
+### Notes
+
+- The benchmark can be run with different combinations of baselines and experimental methods via the `--baseline` and `--methods` flags.
+- The default experiment set includes the dense baseline and the two experimental methods above.
+
+## 6. Run the retrieval benchmark
+
+The benchmark now defaults to the enriched dataset files defined in `project_code/utils.py`:
+
+- documents: `output/documents_enriched_03.jsonl`
+- qrels: `output/qrels_enriched_02.jsonl`
+
+Run the full benchmark with:
 
 ```bash
 python project_code/benchmark.py
 ```
 
-better
+Useful variants:
 
 ```bash
 python project_code/benchmark.py --batch-size 10
-```
-
-For quick debug testing use a smaller sampled catalog:
-
-```bash
 python project_code/benchmark.py --debug
-```
-
-Or explicitly sample a subset of documents while preserving query/qrel groups:
-
-```bash
 python project_code/benchmark.py --sample-size 500 --batch-size 10
 ```
 
-#### other command flags:
+Common CLI flags include:
 
-| Task                            | Command                                                                                         |
-| ------------------------------- | ----------------------------------------------------------------------------------------------- |
-| Run with defaults (all queries) | `python code/benchmark.py`                                                                      |
-| Quick test (10 random queries)  | `python code/benchmark.py --batch-size 10`                                                      |
-| Medium batch (50 queries)       | `python code/benchmark.py --batch-size 50`                                                      |
-| Test with different seed        | `python code/benchmark.py --batch-size 10 --seed 123`                                           |
-| Change embedding model          | `python code/benchmark.py --embedding-model all-mpnet-base-v2`                                  |
-| Custom k-values                 | `python code/benchmark.py --k-values 5 20 100`                                                  |
-| Debug mode (small sampled run)  | `python code/benchmark.py --debug`                                                              |
-| Sample documents for testing    | `python code/benchmark.py --sample-size 500 --batch-size 10`                                    |
-| Use specialized paper model     | `python code/benchmark.py --embedding-model allenai/specter2`                                   |
-| Full custom command             | `python code/benchmark.py --batch-size 20 --embedding-model all-mpnet-base-v2 --k-values 10 50` |
+- `--docs-path` to override the input document file
+- `--qrels-path` to override the input qrels file
+- `--embedding-model` to switch the dense embedding model
+- `--metadata-boost` to tune metadata-aware scoring
+- `--k-values` to change evaluation cutoffs
+- `--sample-size` and `--debug` for smaller test runs
+- `--batch-size` and `--seed` for reproducible query subsampling
+- `--baseline` and `--methods` to select the retrieval methods to evaluate
+- `--hyperparam-search` and `--n-trials` for optional tuning runs
 
-## 6. View benchmark results
+## 7. View benchmark results
 
-Results are written to:
+The benchmark writes its results to:
 
 - `results/method_results.json`
 
-## 7. Notes
+To create a comparison plot from the saved benchmark results, run:
 
-- `project_datasets/data_set_alignment.py` must run before `code/benchmark.py` because the benchmark reads the aligned dataset files.
-- If the dataset download step fails, verify that `kagglehub`, `datasets`, `pandas`, and `tqdm` are installed and that Kaggle credentials are configured.
+```bash
+python project_code/benchmark_visualization.py
+```
 
-## Quick Start Summary
+The generated chart will be written under `results/visualizations/`.
 
-1. Activate virtual environment.
-2. Install dataset and benchmark dependencies.
+## 8. Notes
+
+- `project_datasets/data_set_alignment.py` should be run before the enrichment and benchmark steps because the later stages rely on the generated JSONL files.
+- If the dataset download step fails, verify that the required packages are installed and that any required credentials are configured.
+- The benchmark can be pointed at different dataset versions with `--docs-path` and `--qrels-path` when needed.
+
+## Quick start summary
+
+1. Activate the virtual environment.
+2. Install dependencies with `pip install -r requirements.txt`.
 3. Run `python project_datasets/data_set_alignment.py`.
-4. Run `python code/validate_benchmark.py`.
-5. Run `python code/benchmark.py`.
-6. Check results in `results/method_results.json`.
+4. Run `python project_datasets/data_set_enrichment.py`.
+5. Run `python project_code/validate_benchmark.py`.
+6. Run `python project_code/benchmark.py`.
+7. Generate a plot with `python project_code/benchmark_visualization.py`.
+8. Inspect the output in `results/method_results.json` and `results/visualizations/`.
