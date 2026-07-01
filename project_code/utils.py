@@ -3,6 +3,9 @@
 import argparse
 from typing import Any, Dict, List, Tuple
 
+DEFAULT_RESULTS_FILENAME = "method_results.json"
+DEFAULT_RESULTS_PATH = f"results/{DEFAULT_RESULTS_FILENAME}"
+
 
 def create_parser() -> argparse.ArgumentParser:
     """Create and return the argument parser for the benchmark script."""
@@ -22,7 +25,7 @@ def create_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--output-path",
-        default="results/method_results.json",
+        default=DEFAULT_RESULTS_PATH,
         help="Path to save results",
     )
     parser.add_argument(
@@ -75,7 +78,7 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--methods",
         nargs="+",
-        default=["charm"],
+        default=["charm", "graph_sage"],
         choices=["dense_labels", "charm", "graph_sage"],
         help="Experimental methods to benchmark against baseline. Available: dense_labels, charm, graph_sage",
     )

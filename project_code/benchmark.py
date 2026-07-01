@@ -286,6 +286,35 @@ EXPERIMENTAL_METHODS = {
 }
 
 
+def build_benchmark_config(
+    args, documents, qrels, baseline_config, experimental_method_keys
+):
+    """Create a serializable benchmark configuration block for result outputs."""
+    return {
+        "docs_path": args.docs_path,
+        "qrels_path": args.qrels_path,
+        "output_path": args.output_path,
+        "embedding_model": args.embedding_model,
+        "baseline": args.baseline,
+        "baseline_label": baseline_config["label"],
+        "methods": args.methods,
+        "experimental_method_labels": {
+            method_key: EXPERIMENTAL_METHODS[method_key]["label"]
+            for method_key in experimental_method_keys
+        },
+        "k_values": args.k_values,
+        "batch_size": args.batch_size,
+        "seed": args.seed,
+        "sample_size": args.sample_size,
+        "debug": args.debug,
+        "metadata_boost": getattr(args, "metadata_boost", None),
+        "hyperparam_search": getattr(args, "hyperparam_search", False),
+        "n_trials": getattr(args, "n_trials", None),
+        "document_count": len(documents),
+        "query_count": len(qrels),
+    }
+
+
 def hyperparam_search(args, documents, qrels, n_trials=20, seed=42):
     random.seed(seed)
 
@@ -423,9 +452,17 @@ def main():
             use_cache=use_cache,
         )
 
+    benchmark_config = build_benchmark_config(
+        args,
+        documents,
+        qrels,
+        baseline_config,
+        args.methods,
+    )
+
     runner.print_results()
     runner.print_comparison_summary(baseline_config["label"])
-    runner.save_results(args.output_path)
+    runner.save_results(args.output_path, benchmark_config=benchmark_config)
 
     logger.info("\nBenchmark complete!")
 
