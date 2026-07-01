@@ -748,6 +748,7 @@ class GNNRet(BaseMethod):
         val_ratio: float = 0.15,
     ):
         self.model = SentenceTransformer(model_name)
+        self.model_name = model_name
         self.K = K
         self.L = L
         self.O = O
@@ -778,6 +779,20 @@ class GNNRet(BaseMethod):
 
     def build_index(self, documents: Dict, include_labels: bool = False) -> None:
         """Encode all documents and build the entity-shared graph."""
+        cache_key = make_cache_key(documents, method="gnn_ret", model=self.model_name)
+        cache_path = CACHE_DIR / f"gnn_ret_{cache_key}.joblib"
+
+        if cache_path.exists():
+            logger.info("GNNRet: loading index from cache: %s", cache_path)
+            cache = joblib.load(cache_path)
+            self._documents = cache["_documents"]
+            self.doc_ids = cache["doc_ids"]
+            self._id_to_idx = cache["_id_to_idx"]
+            self.embeddings = cache["embeddings"]
+            self.doc_norms = cache["doc_norms"]
+            self.edge_index = torch.tensor(cache["edge_index"], dtype=torch.long)
+            logger.info("GNNRet: loaded index with %d documents", len(self.doc_ids))
+            return
 
         logger.info("GNNRet: encoding %d documents...", len(documents))
         self._documents = documents
@@ -832,6 +847,21 @@ class GNNRet(BaseMethod):
             "GNNRet: graph ready — %d nodes, %d directed edges",
             len(self.doc_ids), n_edges,
         )
+
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        joblib.dump(
+            {
+                "_documents": self._documents,
+                "doc_ids": self.doc_ids,
+                "_id_to_idx": self._id_to_idx,
+                "embeddings": self.embeddings,
+                "doc_norms": self.doc_norms,
+                "edge_index": self.edge_index.numpy(),
+                "cache_key": cache_key,
+            },
+            cache_path,
+        )
+        logger.info("GNNRet: index cached to %s", cache_path)
 
     # ── Qrel split ────────────────────────────────────────────────────────────
 
