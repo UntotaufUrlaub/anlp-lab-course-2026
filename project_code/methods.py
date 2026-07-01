@@ -794,6 +794,9 @@ class GNNRet(BaseMethod):
 
     # ── Index construction ────────────────────────────────────────────────────
 
+    def load_cache(self, cache_dir) -> bool:
+        return self.embeddings is not None
+
     def build_index(self, documents: Dict, include_labels: bool = False) -> None:
         """Encode all documents and build the entity-shared graph."""
 
@@ -998,8 +1001,9 @@ class GNNRet(BaseMethod):
 
     # ── Retrieval ─────────────────────────────────────────────────────────────
 
-    def retrieve(self, query: str, top_k: int = 10) -> List[Tuple[str, float]]:
+    def retrieve(self, query_doc: Dict, top_k: int = 10) -> List[Tuple[str, float]]:
         """Return top_k documents ranked by propagated relevance score."""
+        query = prepare_text(query_doc, include_title=True)
         q_emb = self.model.encode(query, convert_to_numpy=True)
         h0 = self._compute_h0(q_emb)
 
