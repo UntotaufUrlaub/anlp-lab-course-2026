@@ -813,18 +813,26 @@ class GNNRet(BaseMethod):
                     if entity:
                         key = f"{field}:{entity}"
                         entity_to_docs.setdefault(key, []).append(idx) #creates a dictionary with entries eg. key:"people":"XYZ" value:[0, 1, 2 ...](doc_inds)
-        #could also add edges corresponding to labels
+        label_to_docs: Dict[str, List[int]] = {}
+        for idx, doc in enumerate(documents.values()):
+            structured = doc.get("structured_fields", {}) or {}
+            for field_type in ("categorical", "hierarchical"):
+                for label in _as_text_list(structured.get(field_type)):
+                    if label:
+                        key = f"label:{label}"
+                        label_to_docs.setdefault(key, []).append(idx)
 
-        #builds list of edges based on shared entities
+        #builds list of edges based on shared entities and shared labels
         src_list, dst_list = [], []
-        for indices in entity_to_docs.values():
-            if len(indices) > self.max_entity_cluster:
-                continue
-            for i in indices:
-                for j in indices:
-                    if i != j:
-                        src_list.append(i)
-                        dst_list.append(j)
+        for group in (entity_to_docs, label_to_docs):
+            for indices in group.values():
+                if len(indices) > self.max_entity_cluster:
+                    continue
+                for i in indices:
+                    for j in indices:
+                        if i != j:
+                            src_list.append(i)
+                            dst_list.append(j)
 
         #adds citation edges
         for idx, doc in enumerate(documents.values()):
