@@ -17,7 +17,6 @@ def create_parser() -> argparse.ArgumentParser:
         default="output/documents_enriched_03.jsonl",
         help="Path to documents JSONL file",
     )
-    # TODO use qrels instead of enriched bc citation matching?
     parser.add_argument(
         "--qrels-path",
         default="output/qrels_enriched_02.jsonl",
@@ -78,7 +77,7 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--methods",
         nargs="+",
-        default=["charm", "graph_sage"],
+        default=["dense_labels", "charm", "graph_sage"],
         choices=["dense_labels", "charm", "graph_sage"],
         help="Experimental methods to benchmark against baseline. Available: dense_labels, charm, graph_sage",
     )

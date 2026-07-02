@@ -319,9 +319,9 @@ class CHARMInspiredMethod(BaseMethod):
         device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model = SentenceTransformer(model_name, device=device)
         self.field_weights = field_weights or {
-            "metadata": 2.0,
-            "title": 1.5,
-            "main_text": 0.5,
+            "metadata": 1.0,
+            "title": 1.0,
+            "main_text": 2.0,
         }
         self.first_stage_k = first_stage_k
         self.doc_ids = []
@@ -351,6 +351,21 @@ class CHARMInspiredMethod(BaseMethod):
             / (np.linalg.norm(matrix, axis=1) * np.linalg.norm(vec) + 1e-10)
         )
 
+    def _is_useless_metadata(self, doc: Dict) -> bool:
+        structured = doc.get("structured_fields") or {}
+        categorical = structured.get("categorical", {}) or {}
+        hierarchical = structured.get("hierarchical", {}) or {}
+        keys = set(categorical.keys())
+        return (
+            bool(keys)
+            and keys <= {"specificity", "quality"}
+            and not hierarchical
+            and all(
+                isinstance(v, (int, float)) or str(v).strip()
+                for v in categorical.values()
+            )
+        )
+
     def build_index(self, documents: Dict, **kwargs):
         self.doc_ids = list(documents.keys())
         all_fields = [self._extract_fields(doc) for doc in documents.values()]
@@ -368,30 +383,36 @@ class CHARMInspiredMethod(BaseMethod):
         self.agg_embeddings = weighted_sum / total_weight
 
     def retrieve(self, query_doc: Dict, top_k: int = 10, **kwargs):
-
         fields = self._extract_fields(query_doc)
-        query_text = " ".join(v for v in fields.values() if v)
-        q = self.model.encode(query_text, convert_to_numpy=True)
+        metadata_text = fields["metadata"].strip()
 
-        # Stage 1: shortlist via aggregated embedding
-        k1 = min(self.first_stage_k, len(self.doc_ids))
-        agg_scores = self._cosine(self.agg_embeddings, q)
-        shortlist = np.argsort(agg_scores)[-k1:][::-1]
+        active_weights = (
+            self.field_weights
+            if metadata_text and not self._is_useless_metadata(query_doc)
+            else {
+                "main_text": self.field_weights.get("main_text", 1.0),
+            }
+        )
 
-        # Stage 2: rerank by max similarity across any field
-        field_scores = np.stack(
-            [
-                self._cosine(self.field_embeddings[f][shortlist], q)
-                for f in self.field_embeddings
-            ],
-            axis=1,
-        ).max(axis=1)
+        weighted_sum = None
+        total_weight = sum(active_weights.values())
+        for field, w in active_weights.items():
+            text = fields[field]
+            if not text:
+                continue
+            emb = self.model.encode(text, convert_to_numpy=True)
+            weighted_sum = (
+                (weighted_sum + w * emb) if weighted_sum is not None else w * emb
+            )
 
-        order = np.argsort(field_scores)[-(top_k + 1) :][::-1]
-        final = shortlist[order]
-        scores = field_scores[order]
+        if weighted_sum is None:
+            return []
 
-        return [(self.doc_ids[i], float(s)) for i, s in zip(final, scores)]
+        q = weighted_sum / total_weight
+        scores = self._cosine(self.agg_embeddings, q)
+        order = np.argsort(scores)[-(top_k + 1) :][::-1]
+
+        return [(self.doc_ids[i], float(scores[i])) for i in order]
 
 
 class SAGEGraphExpansionMethod(BaseMethod):
