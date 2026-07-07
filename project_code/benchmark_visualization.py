@@ -10,7 +10,7 @@ try:
 except ImportError:
     from project_code.utils import DEFAULT_RESULTS_FILENAME
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parent
 RESULTS_DIR = PROJECT_ROOT / "results"
 VISUALIZATION_DIR = RESULTS_DIR / "visualizations"
 

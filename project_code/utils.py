@@ -3,8 +3,8 @@
 import argparse
 from typing import Any, Dict, List, Tuple
 
-DEFAULT_RESULTS_FILENAME = "method_results.json"
-DEFAULT_RESULTS_PATH = f"results/{DEFAULT_RESULTS_FILENAME}"
+DEFAULT_RESULTS_FILENAME = "dense_baseline_SAGE_CHARM.json"
+DEFAULT_RESULTS_PATH = f"project_code/results/{DEFAULT_RESULTS_FILENAME}"
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -14,13 +14,13 @@ def create_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--docs-path",
-        default="output/documents_enriched_03.jsonl",
+        default="project_datasets/output/documents_enriched_03.jsonl",
         help="Path to documents JSONL file",
     )
     # TODO use qrels instead of enriched bc citation matching?
     parser.add_argument(
         "--qrels-path",
-        default="output/qrels_enriched_02.jsonl",
+        default="project_datasets/output/qrels_enriched_02.jsonl",
         help="Path to qrels JSONL file",
     )
     parser.add_argument(
