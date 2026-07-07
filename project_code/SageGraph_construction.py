@@ -551,9 +551,7 @@ class GitHubGraph(SAGEGraph):
 
 
 if __name__ == "__main__":
-    total_dataset_path = (
-        PROJECT_DIR / "project_datasets" / "output" / "documents_enriched_03.jsonl"
-    )
+    total_dataset_path = PROJECT_DIR / "output" / "documents_enriched_03.jsonl"
 
     # paper_graph construction
     paper_entries = load_entries(total_dataset_path, "paper")
@@ -570,6 +568,8 @@ if __name__ == "__main__":
     github_graph = GitHubGraph("github_graph")
 
     github_graph.build_graph(github_entries)
+
+    github_graph.save_graph()
 
     # inspect graph statistics
     print("Paper_graph statistics:")
