@@ -856,13 +856,13 @@ class GNNRet(BaseMethod):
                             dst_list.append(j)
 
         #adds citation edges
-        for idx, doc in enumerate(documents.values()):
-            if doc.get("source_type") == "paper":
-                for entity in doc.get("relations", {}).get("explicit_related_ids", []):
-                    entity_str = str(entity)
-                    if entity_str in self._id_to_idx:
-                        src_list.append(idx)
-                        dst_list.append(self._id_to_idx[entity_str])
+        # for idx, doc in enumerate(documents.values()):
+        #     if doc.get("source_type") == "paper":
+        #         for entity in doc.get("relations", {}).get("explicit_related_ids", []):
+        #             entity_str = str(entity)
+        #             if entity_str in self._id_to_idx:
+        #                 src_list.append(idx)
+        #                 dst_list.append(self._id_to_idx[entity_str])
 
         if src_list:
             self.edge_index = torch.tensor(
