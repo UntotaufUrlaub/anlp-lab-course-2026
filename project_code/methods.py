@@ -1055,7 +1055,7 @@ class GNNRet(BaseMethod):
         return [(self.doc_ids[i], float(1.0 - hL[i].item())) for i in topk_indices]
 
 
-class NovelGATMethod(GNNRet):
+class NovelGATMethod(BaseMethod):
     """Graph Attention Network retrieval.
     """
 

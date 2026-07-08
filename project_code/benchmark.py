@@ -459,7 +459,7 @@ def main():
     for method_key in args.methods:
         method_config = EXPERIMENTAL_METHODS[method_key]
         method = method_config["builder"](args)
-        if isinstance(method, GNNRet):
+        if isinstance(method, GNNRet) or isinstance(method, NovelGATMethod):
             method.build_index(documents)
             qrels_list = [
                 {"query_id": qid, "candidate_ids": list(cids)}
