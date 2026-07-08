@@ -1055,7 +1055,7 @@ class GNNRet(BaseMethod):
         return [(self.doc_ids[i], float(1.0 - hL[i].item())) for i in topk_indices]
 
 
-class NovelGATMethod(GNNRet):
+class NovelGATMethod(BaseMethod):
     """Graph Attention Network retrieval.
     """
 
@@ -1069,18 +1069,24 @@ class NovelGATMethod(GNNRet):
             epochs: int = 10,
             max_entity_cluster: int = 50,
             train_ratio: float = 0.10,
-            val_ratio: float = 0.15,
     ):
-        super().__init__(
-            model_name=model_name,
-            O=O,
-            lr=lr,
-            margin=margin,
-            epochs=epochs,
-            max_entity_cluster=max_entity_cluster,
-            train_ratio=train_ratio,
-            val_ratio=val_ratio,
-        )
+        self.model = SentenceTransformer(model_name)
+        self.model_name = model_name
+        self.O = O
+        self.lr = lr
+        self.margin = margin
+        self.epochs = epochs
+        self.max_entity_cluster = max_entity_cluster
+        self.train_ratio = train_ratio
+
+        self.doc_ids: List[str] = []
+        self._id_to_idx: Dict[str, int] = {}
+        self.embeddings: np.ndarray = None
+        self.doc_norms: np.ndarray = None
+        self.edge_index: "torch.Tensor" = None
+        self._documents: Dict = {}
+        self.train_qrels: List[Dict] = []
+        self.test_qrels: List[Dict] = []
         self.hidden_dim = hidden_dim
         self.attn_W1 = torch.nn.Parameter(torch.randn(hidden_dim, 2) * 0.01)
         self.attn_b1 = torch.nn.Parameter(torch.zeros(hidden_dim))
@@ -1093,7 +1099,7 @@ class NovelGATMethod(GNNRet):
         return self.embeddings is not None
 
     def build_index(self, documents: Dict, include_labels: bool = False) -> None:
-        """Encode all documents and build the entity-shared graph (separate cache)."""
+        """Encode all documents and build the entity-shared graph."""
         cache_key = make_cache_key(documents, method="novel_gat", model=self.model_name)
         cache_path = CACHE_DIR / f"novel_gat_{cache_key}.joblib"
 
@@ -1183,12 +1189,36 @@ class NovelGATMethod(GNNRet):
         )
         logger.info("NovelGAT: index cached to %s", cache_path)
 
+    def split_qrels(self, qrels: List[Dict]) -> None:
+        """Randomly partition resolvable qrels into train / val / test."""
+        import random
+
+        valid = [
+            q for q in qrels
+            if str(q["query_id"]) in self._id_to_idx
+            and q.get("candidate_ids")
+            and all(str(c) in self._id_to_idx for c in q["candidate_ids"])
+        ]
+        random.shuffle(valid)
+        n = len(valid)
+        n_train = int(n * self.train_ratio)
+        self.train_qrels = valid[:n_train]
+        self.test_qrels = valid[n_train :]
+        logger.info(
+            "Qrels split: %d train / %d test",
+            len(self.train_qrels), len(self.test_qrels),
+        )
+
     # ── Attention network ─────────────────────────────────────────────────────
 
     def _attn_net(self, feat: "torch.Tensor") -> "torch.Tensor":
         """Two-layer MLP attention score.  feat: (E, 2) → (E,)."""
         x = F.leaky_relu(feat @ self.attn_W1.T + self.attn_b1)  # (E, hidden_dim)
         return (x @ self.attn_W2.T + self.attn_b2).squeeze(-1)   # (E,)
+
+    def _compute_h0(self, q_emb: np.ndarray) -> np.ndarray:
+        norms = self.doc_norms * np.linalg.norm(q_emb) + 1e-10
+        return 1.0 - np.dot(self.embeddings, q_emb) / norms
 
     # ── Graph propagation ─────────────────────────────────────────────────────
 
