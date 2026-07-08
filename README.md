@@ -176,12 +176,6 @@ Common CLI flags include:
 - `--baseline` and `--methods` to select the retrieval methods to evaluate
 - `--hyperparam-search` and `--n-trials` for optional tuning runs
 
-To run GNNRet specifically:
-
-```bash
-python project_code/benchmark.py --methods gnn_ret
-```
-
 ## 7. View benchmark results
 
 The benchmark writes its results to:
