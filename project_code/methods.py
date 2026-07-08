@@ -15,6 +15,7 @@ import joblib
 import hashlib
 import json
 import torch
+import torch.nn.functional as F
 
 # try:
 from rank_bm25 import BM25Okapi
@@ -1051,4 +1052,248 @@ class GNNRet(BaseMethod):
         actual_k = min(top_k, len(self.doc_ids))
         topk_indices = hL.topk(actual_k, largest=False).indices.tolist()
         # Invert distance → similarity so higher score means more relevant
+        return [(self.doc_ids[i], float(1.0 - hL[i].item())) for i in topk_indices]
+
+
+class NovelGATMethod(GNNRet):
+    """Graph Attention Network retrieval.
+    """
+
+    def __init__(
+            self,
+            model_name: str = "all-MiniLM-L6-v2",
+            O: int = 25,
+            hidden_dim: int = 8,
+            lr: float = 0.01,
+            margin: float = 0.1,
+            epochs: int = 10,
+            max_entity_cluster: int = 50,
+            train_ratio: float = 0.10,
+            val_ratio: float = 0.15,
+    ):
+        super().__init__(
+            model_name=model_name,
+            O=O,
+            lr=lr,
+            margin=margin,
+            epochs=epochs,
+            max_entity_cluster=max_entity_cluster,
+            train_ratio=train_ratio,
+            val_ratio=val_ratio,
+        )
+        self.hidden_dim = hidden_dim
+        self.attn_W1 = torch.nn.Parameter(torch.randn(hidden_dim, 2) * 0.01)
+        self.attn_b1 = torch.nn.Parameter(torch.zeros(hidden_dim))
+        self.attn_W2 = torch.nn.Parameter(torch.randn(1, hidden_dim) * 0.01)
+        self.attn_b2 = torch.nn.Parameter(torch.zeros(1))
+
+    # ── Index construction ────────────────────────────────────────────────────
+
+    def load_cache(self, cache_dir) -> bool:
+        return self.embeddings is not None
+
+    def build_index(self, documents: Dict, include_labels: bool = False) -> None:
+        """Encode all documents and build the entity-shared graph (separate cache)."""
+        cache_key = make_cache_key(documents, method="novel_gat", model=self.model_name)
+        cache_path = CACHE_DIR / f"novel_gat_{cache_key}.joblib"
+
+        if cache_path.exists():
+            logger.info("NovelGAT: loading index from cache: %s", cache_path)
+            cache = joblib.load(cache_path)
+            self._documents = cache["_documents"]
+            self.doc_ids = cache["doc_ids"]
+            self._id_to_idx = cache["_id_to_idx"]
+            self.embeddings = cache["embeddings"]
+            self.doc_norms = cache["doc_norms"]
+            self.edge_index = torch.tensor(cache["edge_index"], dtype=torch.long)
+            logger.info("NovelGAT: loaded index with %d documents", len(self.doc_ids))
+            return
+
+        logger.info("NovelGAT: encoding %d documents...", len(documents))
+        self._documents = documents
+        self.doc_ids = list(self._documents.keys())
+        self._id_to_idx = {doc_id: i for i, doc_id in enumerate(self.doc_ids)}
+
+        texts = [prepare_text(doc, include_title=True) for doc in self._documents.values()]
+        self.embeddings = self.model.encode(
+            texts, batch_size=32, show_progress_bar=True, convert_to_numpy=True
+        )
+        self.doc_norms = np.linalg.norm(self.embeddings, axis=1)
+
+        logger.info("NovelGAT: building entity-shared graph...")
+        entity_to_docs: Dict[str, List[int]] = {}
+        for idx, doc in enumerate(documents.values()):
+            for field in ("people", "organizations", "projects", "topics"):
+                for entity in doc.get("entities", {}).get(field, []):
+                    if entity:
+                        key = f"{field}:{entity}"
+                        entity_to_docs.setdefault(key, []).append(idx)
+
+        label_to_docs: Dict[str, List[int]] = {}
+        for idx, doc in enumerate(documents.values()):
+            structured = doc.get("structured_fields", {}) or {}
+            for field_type in ("categorical", "hierarchical"):
+                for label in _as_text_list(structured.get(field_type)):
+                    if label:
+                        key = f"label:{label}"
+                        label_to_docs.setdefault(key, []).append(idx)
+
+        src_list, dst_list = [], []
+        for group in (entity_to_docs, label_to_docs):
+            for indices in group.values():
+                if len(indices) > self.max_entity_cluster:
+                    continue
+                for i in indices:
+                    for j in indices:
+                        if i != j:
+                            src_list.append(i)
+                            dst_list.append(j)
+
+        for idx, doc in enumerate(documents.values()):
+            if doc.get("source_type") == "paper":
+                for ref in doc.get("relations", {}).get("explicit_related_ids", []):
+                    ref_str = str(ref)
+                    if ref_str in self._id_to_idx:
+                        src_list.append(idx)
+                        dst_list.append(self._id_to_idx[ref_str])
+
+        if src_list:
+            self.edge_index = torch.tensor([src_list, dst_list], dtype=torch.long)
+        else:
+            self.edge_index = torch.zeros((2, 0), dtype=torch.long)
+
+        n_edges = self.edge_index.shape[1]
+        logger.info(
+            "NovelGAT: graph ready — %d nodes, %d directed edges",
+            len(self.doc_ids), n_edges,
+        )
+
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        joblib.dump(
+            {
+                "_documents": self._documents,
+                "doc_ids": self.doc_ids,
+                "_id_to_idx": self._id_to_idx,
+                "embeddings": self.embeddings,
+                "doc_norms": self.doc_norms,
+                "edge_index": self.edge_index.numpy(),
+                "cache_key": cache_key,
+            },
+            cache_path,
+        )
+        logger.info("NovelGAT: index cached to %s", cache_path)
+
+    # ── Attention network ─────────────────────────────────────────────────────
+
+    def _attn_net(self, feat: "torch.Tensor") -> "torch.Tensor":
+        """Two-layer MLP attention score.  feat: (E, 2) → (E,)."""
+        x = F.leaky_relu(feat @ self.attn_W1.T + self.attn_b1)  # (E, hidden_dim)
+        return (x @ self.attn_W2.T + self.attn_b2).squeeze(-1)   # (E,)
+
+    # ── Graph propagation ─────────────────────────────────────────────────────
+
+    def _propagate(self, h0: np.ndarray, _unused=None) -> "torch.Tensor":
+        """Attention-weighted aggregation.
+
+        h[i,l] = sum_{j in N(i) u {i}} a[i,j] * h[j,l-1]
+
+        a[i,j] are softmax-normalised per destination node, computed by the
+        attention MLP from (h_dst, h_src) at the current round.
+        """
+        N = len(self.doc_ids)
+        h = torch.tensor(h0, dtype=torch.float32)
+
+        self_idx = torch.arange(N)
+        all_src = torch.cat([self.edge_index[0], self_idx])  # [E+N]
+        all_dst = torch.cat([self.edge_index[1], self_idx])  # [E+N]
+
+        feat = torch.stack([h[all_dst], h[all_src]], dim=1)  # [E+N, 2]
+        e = self._attn_net(feat)                              # [E+N]
+
+        # Softmax per destination (pure PyTorch 2.0 scatter_reduce)
+        e_max = h.new_full((N,), float("-inf"))
+        e_max = torch.scatter_reduce(e_max, 0, all_dst, e, reduce="amax", include_self=True)
+        exp_e = torch.exp(e - e_max[all_dst])
+        sum_exp = torch.zeros(N)
+        sum_exp = torch.scatter_reduce(sum_exp, 0, all_dst, exp_e, reduce="sum", include_self=False)
+        a = exp_e / (sum_exp[all_dst] + 1e-10)  # [E+N]
+
+        h_new = torch.zeros(N)
+        h_new = torch.scatter_reduce(h_new, 0, all_dst, a * h[all_src], reduce="sum", include_self=False)
+        h = h_new
+
+        return h
+
+    # ── Training ──────────────────────────────────────────────────────────────
+
+    def train(self, qrels: List[Dict]) -> None:
+        """Learn attention weights using the same hinge loss as GNNRet."""
+        self.split_qrels(qrels)
+        attn_params = [self.attn_W1, self.attn_b1, self.attn_W2, self.attn_b2]
+        optimizer = torch.optim.SGD(attn_params, lr=self.lr)
+
+        N = len(self.doc_ids)
+        top_o = min(self.O, N)
+
+        query_emb_cache: Dict[str, np.ndarray] = {}
+        for qrel in self.train_qrels:
+            qid = str(qrel["query_id"])
+            if qid not in query_emb_cache:
+                query_text = prepare_text(self._documents[qid])
+                query_emb_cache[qid] = self.model.encode(query_text, convert_to_numpy=True)
+
+        for epoch in range(self.epochs):
+            total_loss = 0.0
+            n_updates = 0
+
+            for qrel in self.train_qrels:
+                qid = str(qrel["query_id"])
+                gold_ids = {str(c) for c in qrel["candidate_ids"]}
+
+                h0 = self._compute_h0(query_emb_cache[qid])
+                hL = self._propagate(h0)
+
+                topO_indices = hL.detach().topk(top_o, largest=False).indices.tolist()
+                so_ids = {self.doc_ids[i] for i in topO_indices}
+
+                sy_idx = [self._id_to_idx[g] for g in gold_ids if g in self._id_to_idx]
+                so_minus_sy_idx = [
+                    self._id_to_idx[d]
+                    for d in (so_ids - gold_ids)
+                    if d in self._id_to_idx
+                ]
+                if not sy_idx or not so_minus_sy_idx:
+                    continue
+
+                dyL = hL[sy_idx].mean()
+                doyL = hL[so_minus_sy_idx].mean()
+                loss = torch.clamp(self.margin + dyL - doyL, min=0.0)
+
+                if loss.grad_fn is None:
+                    continue
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+                total_loss += loss.item()
+                n_updates += 1
+
+            w1_norm = self.attn_W1.data.norm().item()
+            logger.info(
+                "Epoch %d/%d  loss=%.4f  over %d queries  attn_W1_norm=%.4f",
+                epoch + 1, self.epochs, total_loss, n_updates, w1_norm,
+            )
+
+    # ── Retrieval ─────────────────────────────────────────────────────────────
+
+    def retrieve(self, query_doc: Dict, top_k: int = 10) -> List[Tuple[str, float]]:
+        """Return top_k documents ranked by propagated relevance score."""
+        query = prepare_text(query_doc, include_title=True)
+        q_emb = self.model.encode(query, convert_to_numpy=True)
+        h0 = self._compute_h0(q_emb)
+
+        with torch.no_grad():
+            hL = self._propagate(h0)
+
+        actual_k = min(top_k, len(self.doc_ids))
+        topk_indices = hL.topk(actual_k, largest=False).indices.tolist()
         return [(self.doc_ids[i], float(1.0 - hL[i].item())) for i in topk_indices]
