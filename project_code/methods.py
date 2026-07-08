@@ -718,3 +718,337 @@ class SAGEGraphExpansionMethod(BaseMethod):
         )
 
         return ranked[:top_k]
+
+class GNNRet(BaseMethod):
+    """Graph-propagation retrieval.
+
+    Builds a document graph where edges connect documents that share at least
+    one entity (person / organisation / project / topic).  At inference time,
+    K seed nodes (closest to the query) spread their relevance score through
+    the graph for L rounds; a per-round mixing weight α is trained with a
+    hinge loss on the training split of the supplied qrels.
+
+    Parameters
+    ----------
+    model_name : str
+        Sentence Transformer model for encoding documents and queries.
+    K : int
+        Number of seed nodes selected per propagation round — the K documents
+        with the smallest current distance h[i, l-1] to the query.
+    L : int
+        Number of message-passing (propagation) rounds.
+    O : int
+        Size of the candidate set ``so`` used when computing the training loss.
+        The O nodes with the lowest h[i, L] are selected.
+    lr : float
+        SGD learning rate for the α parameter vector.
+    margin : float
+        Hinge margin ``r`` in loss = max(0, r + d_y^L − d_o^L).
+    epochs : int
+        Number of full passes over the training qrels during ``train()``.
+    max_entity_cluster : int
+        Entities shared by more than this many documents are ignored when
+        building edges — prevents very common labels from creating dense cliques.
+    train_ratio : float
+        Fraction of (valid) qrels used for training.
+    val_ratio : float
+        Fraction of (valid) qrels used for validation; the remainder is test.
+    """
+
+    def __init__(
+        self,
+        model_name: str = "all-MiniLM-L6-v2",
+        K: int = 5,
+        L: int = 5,
+        O: int = 25,
+        lr: float = 0.01,
+        margin: float = 0.1,
+        epochs: int = 10,
+        max_entity_cluster: int = 50,
+        train_ratio: float = 0.10,
+        val_ratio: float = 0.15,
+    ):
+        self.model = SentenceTransformer(model_name)
+        self.model_name = model_name
+        self.K = K
+        self.L = L
+        self.O = O
+        self.lr = lr
+        self.margin = margin
+        self.epochs = epochs
+        self.max_entity_cluster = max_entity_cluster
+        self.train_ratio = train_ratio
+        self.val_ratio = val_ratio
+
+        self.doc_ids: List[str] = []
+        self._id_to_idx: Dict[str, int] = {}
+        self.embeddings: np.ndarray = None
+        self.doc_norms: np.ndarray = None
+        # edge_index: LongTensor [2, E] (both directions stored)
+        self.edge_index: "torch.Tensor" = None
+        self._documents: Dict = {}
+        # alpha[l] controls blending at round l
+        self.alpha = torch.nn.Parameter(torch.full((L,), 0.5))
+        self.train_qrels: List[Dict] = []
+        self.val_qrels: List[Dict] = []
+        self.test_qrels: List[Dict] = []
+
+    # ── Index construction ────────────────────────────────────────────────────
+
+    def load_cache(self, cache_dir) -> bool:
+        return self.embeddings is not None
+
+    def build_index(self, documents: Dict, include_labels: bool = False) -> None:
+        """Encode all documents and build the entity-shared graph."""
+        cache_key = make_cache_key(documents, method="gnn_ret", model=self.model_name)
+        cache_path = CACHE_DIR / f"gnn_ret_{cache_key}.joblib"
+
+        if cache_path.exists():
+            logger.info("GNNRet: loading index from cache: %s", cache_path)
+            cache = joblib.load(cache_path)
+            self._documents = cache["_documents"]
+            self.doc_ids = cache["doc_ids"]
+            self._id_to_idx = cache["_id_to_idx"]
+            self.embeddings = cache["embeddings"]
+            self.doc_norms = cache["doc_norms"]
+            self.edge_index = torch.tensor(cache["edge_index"], dtype=torch.long)
+            logger.info("GNNRet: loaded index with %d documents", len(self.doc_ids))
+            return
+
+        logger.info("GNNRet: encoding %d documents...", len(documents))
+        self._documents = documents
+        self.doc_ids = list(self._documents.keys())
+        self._id_to_idx = {doc_id: i for i, doc_id in enumerate(self.doc_ids)}
+
+        texts = [prepare_text(doc, include_title=True) for doc in self._documents.values()]
+        self.embeddings = self.model.encode(
+            texts, batch_size=32, show_progress_bar=True, convert_to_numpy=True
+        )
+        self.doc_norms = np.linalg.norm(self.embeddings, axis=1)
+
+        logger.info("GNNRet: building entity-shared graph...")
+        entity_to_docs: Dict[str, List[int]] = {}
+        for idx, doc in enumerate(documents.values()):
+            for field in ("people", "organizations", "projects", "topics"):
+                for entity in doc.get("entities", {}).get(field, []):
+                    if entity:
+                        key = f"{field}:{entity}"
+                        entity_to_docs.setdefault(key, []).append(idx) #creates a dictionary with entries eg. key:"people":"XYZ" value:[0, 1, 2 ...](doc_inds)
+        label_to_docs: Dict[str, List[int]] = {}
+        for idx, doc in enumerate(documents.values()):
+            structured = doc.get("structured_fields", {}) or {}
+            for field_type in ("categorical", "hierarchical"):
+                for label in _as_text_list(structured.get(field_type)):
+                    if label:
+                        key = f"label:{label}"
+                        label_to_docs.setdefault(key, []).append(idx)
+
+        #builds list of edges based on shared entities and shared labels
+        src_list, dst_list = [], []
+        for group in (entity_to_docs, label_to_docs):
+            for indices in group.values():
+                if len(indices) > self.max_entity_cluster:
+                    continue
+                for i in indices:
+                    for j in indices:
+                        if i != j:
+                            src_list.append(i)
+                            dst_list.append(j)
+
+        #adds citation edges
+        # for idx, doc in enumerate(documents.values()):
+        #     if doc.get("source_type") == "paper":
+        #         for entity in doc.get("relations", {}).get("explicit_related_ids", []):
+        #             entity_str = str(entity)
+        #             if entity_str in self._id_to_idx:
+        #                 src_list.append(idx)
+        #                 dst_list.append(self._id_to_idx[entity_str])
+
+        if src_list:
+            self.edge_index = torch.tensor(
+                [src_list, dst_list], dtype=torch.long
+            )
+        else:
+            self.edge_index = torch.zeros((2, 0), dtype=torch.long)
+
+        n_edges = self.edge_index.shape[1]
+        logger.info(
+            "GNNRet: graph ready — %d nodes, %d directed edges",
+            len(self.doc_ids), n_edges,
+        )
+
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        joblib.dump(
+            {
+                "_documents": self._documents,
+                "doc_ids": self.doc_ids,
+                "_id_to_idx": self._id_to_idx,
+                "embeddings": self.embeddings,
+                "doc_norms": self.doc_norms,
+                "edge_index": self.edge_index.numpy(),
+                "cache_key": cache_key,
+            },
+            cache_path,
+        )
+        logger.info("GNNRet: index cached to %s", cache_path)
+
+    # ── Qrel split ────────────────────────────────────────────────────────────
+
+    def split_qrels(self, qrels: List[Dict]) -> None:
+        """Randomly partition resolvable qrels into train / val / test."""
+        import random
+
+        valid = [
+            q for q in qrels
+            if str(q["query_id"]) in self._id_to_idx
+            and q.get("candidate_ids")
+            and all(str(c) in self._id_to_idx for c in q["candidate_ids"])
+        ]
+        random.shuffle(valid)
+        n = len(valid)
+        n_train = int(n * self.train_ratio)
+        n_val = int(n * self.val_ratio)
+        self.train_qrels = valid[:n_train]
+        self.val_qrels = valid[n_train : n_train + n_val]
+        self.test_qrels = valid[n_train + n_val :]
+        logger.info(
+            "Qrels split: %d train / %d val / %d test",
+            len(self.train_qrels), len(self.val_qrels), len(self.test_qrels),
+        )
+
+    # ── Helpers ───────────────────────────────────────────────────────────────
+
+    def _compute_h0(self, q_emb: np.ndarray) -> np.ndarray:
+        norms = self.doc_norms * np.linalg.norm(q_emb) + 1e-10
+        return 1.0 - np.dot(self.embeddings, q_emb) / norms
+
+    # ── Graph propagation ─────────────────────────────────────────────────────
+
+    def _propagate(self, h0: np.ndarray, alpha: "torch.Tensor") -> "torch.Tensor":
+        """Propagate relevance distances through the graph for L rounds.
+
+        h0    : (N,) numpy array — h[i,0] = 1 − cosine_sim(doc_i, query).
+        alpha : (L,) Parameter with grad.
+        Returns (N,) torch tensor hL.
+        """
+
+        N = len(self.doc_ids)
+        h = torch.tensor(h0, dtype=torch.float32)
+
+        k_seeds = min(self.K, N)
+        for l in range(self.L):
+            # --- select K seeds (detached — seed selection has no gradient) ---
+            seed_indices = h.detach().topk(k_seeds, largest=False).indices
+
+            # --- filter edge_index to edges whose source is a seed -----------
+            seed_mask = torch.zeros(N, dtype=torch.bool)
+            seed_mask[seed_indices] = True
+            active_mask = seed_mask[self.edge_index[0]]   # bool [E]
+
+            if not active_mask.any():
+                break
+
+            active_src = self.edge_index[0][active_mask]  # [E_active]
+            active_dst = self.edge_index[1][active_mask]  # [E_active]
+
+            # --- scatter_min: min arriving score at each destination ----------
+            # fill_value=+inf so nodes with no message keep inf
+            src_scores = h[active_src]                    # [E_active], with grad
+            min_msg = src_scores.new_full((N,), float("inf"))
+            min_msg = torch.scatter_reduce(
+                min_msg, 0, active_dst, src_scores, reduce="amin", include_self=True
+            )                                             # [N]
+
+            # --- update nodes that received a message ------------------------
+            received = torch.isfinite(min_msg)            # [N] bool
+            min_msg_safe = torch.where(received, min_msg, torch.zeros_like(min_msg))
+
+            a = alpha[l]
+            update = a * h + (1.0 - a) * min_msg_safe
+            mask_f = received.float()
+            h = mask_f * update + (1.0 - mask_f) * h
+
+        return h
+
+    # ── Training ──────────────────────────────────────────────────────────────
+
+    def train(self, qrels: List[Dict]) -> None:
+        """Learn α using hinge loss over the training qrel split.
+
+        Loss per query: max(0, margin + d_y^L − d_o^L)
+            d_y^L  = mean h[i,L] for gold docs sy
+            d_o^L  = mean h[i,L] for non-gold docs in top-O  (so − sy)
+        """
+        self.split_qrels(qrels)
+        optimizer = torch.optim.SGD([self.alpha], lr=self.lr)
+
+        N = len(self.doc_ids)
+        top_o = min(self.O, N)
+
+        # Pre-encode all training queries once (reused across epochs)
+        query_emb_cache: Dict[str, np.ndarray] = {}
+        for qrel in self.train_qrels:
+            qid = str(qrel["query_id"])
+            if qid not in query_emb_cache:
+                query_text = prepare_text(self._documents[qid])
+                query_emb_cache[qid] = self.model.encode(query_text, convert_to_numpy=True)
+
+        for epoch in range(self.epochs):
+            total_loss = 0.0
+            n_updates = 0
+
+            for qrel in self.train_qrels:
+                qid = str(qrel["query_id"])
+                gold_ids = {str(c) for c in qrel["candidate_ids"]}
+
+                h0 = self._compute_h0(query_emb_cache[qid])
+
+                hL = self._propagate(h0, self.alpha)
+
+                # top-O set (so)
+                topO_indices = hL.detach().topk(top_o, largest=False).indices.tolist()
+                so_ids = {self.doc_ids[i] for i in topO_indices}
+
+                sy_idx = [self._id_to_idx[g] for g in gold_ids if g in self._id_to_idx]
+                so_minus_sy_idx = [
+                    self._id_to_idx[d]
+                    for d in (so_ids - gold_ids)
+                    if d in self._id_to_idx
+                ]
+                if not sy_idx or not so_minus_sy_idx:
+                    continue
+
+                dyL = hL[sy_idx].mean()
+                doyL = hL[so_minus_sy_idx].mean()
+                loss = torch.clamp(self.margin + dyL - doyL, min=0.0)
+
+                if loss.grad_fn is None:
+                    continue
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+                self.alpha.data.clamp_(0.0, 1.0)
+                total_loss += loss.item()
+                n_updates += 1
+
+            alpha_vals = [f"{v:.3f}" for v in self.alpha.tolist()]
+            logger.info(
+                "Epoch %d/%d  loss=%.4f  over %d queries  alpha=%s",
+                epoch + 1, self.epochs, total_loss, n_updates, alpha_vals,
+            )
+
+    # ── Retrieval ─────────────────────────────────────────────────────────────
+
+    def retrieve(self, query_doc: Dict, top_k: int = 10) -> List[Tuple[str, float]]:
+        """Return top_k documents ranked by propagated relevance score."""
+        query = prepare_text(query_doc, include_title=True)
+        q_emb = self.model.encode(query, convert_to_numpy=True)
+        h0 = self._compute_h0(q_emb)
+
+        with torch.no_grad():
+            hL = self._propagate(h0, self.alpha)
+
+        actual_k = min(top_k, len(self.doc_ids))
+        topk_indices = hL.topk(actual_k, largest=False).indices.tolist()
+        # Invert distance → similarity so higher score means more relevant
+        return [(self.doc_ids[i], float(1.0 - hL[i].item())) for i in topk_indices]

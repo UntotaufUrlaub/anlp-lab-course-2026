@@ -26,6 +26,7 @@ try:
         DenseEmbeddingBaseline,
         CHARMInspiredMethod,
         SAGEGraphExpansionMethod,
+        GNNRet,
     )
     from utils import parse_args, _flatten_hierarchical
     from benchmarkRunner import BenchmarkRunner
@@ -33,6 +34,7 @@ except ImportError:
     from project_code.methods import (
         BM25Baseline,
         DenseEmbeddingBaseline,
+        GNNRet,
         CHARMInspiredMethod,
         SAGEGraphExpansionMethod,
     )
@@ -284,6 +286,10 @@ EXPERIMENTAL_METHODS = {
         "builder": lambda args: SAGEGraphExpansionMethod(),
         "label": "GraphSage",
     },
+    "gnn_ret": {
+        "builder": lambda args: GNNRet(model_name=args.embedding_model, epochs=20, lr=0.01),
+        "label": "GNNRet",
+    },
 }
 
 
@@ -447,6 +453,13 @@ def main():
     for method_key in args.methods:
         method_config = EXPERIMENTAL_METHODS[method_key]
         method = method_config["builder"](args)
+        if isinstance(method, GNNRet):
+            method.build_index(documents)
+            qrels_list = [
+                {"query_id": qid, "candidate_ids": list(cids)}
+                for qid, cids in qrels.items()
+            ]
+            method.train(qrels_list)
         runner.run_method(
             method_config["label"],
             method,
