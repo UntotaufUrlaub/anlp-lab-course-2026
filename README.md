@@ -1,4 +1,4 @@
-﻿# anlp-lab-course-2026
+# anlp-lab-course-2026
 
 ## Overview
 
@@ -136,6 +136,7 @@ The benchmark compares a small set of retrieval strategies that differ in how th
 
 - `CHARMInspiredMethod` — a structure-aware retrieval method that combines metadata, title, and main-text signals with weighted field embeddings and a two-stage reranking strategy.
 - `SAGEGraphExpansionMethod` — a graph-enhanced retrieval method that expands retrieval scores using neighborhood information from paper and issue graphs.
+- `GNNRet` — a graph-propagation retrieval method that builds an entity-shared document graph, selects the closest seed nodes to the query, and spreads relevance through the graph for L rounds using a learned per-round mixing weight
 
 ### Notes
 
@@ -174,6 +175,12 @@ Common CLI flags include:
 - `--batch-size` and `--seed` for reproducible query subsampling
 - `--baseline` and `--methods` to select the retrieval methods to evaluate
 - `--hyperparam-search` and `--n-trials` for optional tuning runs
+
+To run GNNRet specifically:
+
+```bash
+python project_code/benchmark.py --methods gnn_ret
+```
 
 ## 7. View benchmark results
 
