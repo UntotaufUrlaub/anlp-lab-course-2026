@@ -27,6 +27,7 @@ try:
         CHARMInspiredMethod,
         SAGEGraphExpansionMethod,
         GNNRet,
+        NovelGATMethod,
     )
     from utils import parse_args, _flatten_hierarchical
     from benchmarkRunner import BenchmarkRunner
@@ -35,6 +36,7 @@ except ImportError:
         BM25Baseline,
         DenseEmbeddingBaseline,
         GNNRet,
+        NovelGATMethod,
         CHARMInspiredMethod,
         SAGEGraphExpansionMethod,
     )
@@ -290,6 +292,10 @@ EXPERIMENTAL_METHODS = {
         "builder": lambda args: GNNRet(model_name=args.embedding_model, epochs=20, lr=0.01),
         "label": "GNNRet",
     },
+    "novel_gat": {
+        "builder": lambda args: NovelGATMethod(model_name=args.embedding_model, epochs=60, lr=0.1),
+        "label": "NovelGAT",
+    },
 }
 
 
@@ -453,7 +459,7 @@ def main():
     for method_key in args.methods:
         method_config = EXPERIMENTAL_METHODS[method_key]
         method = method_config["builder"](args)
-        if isinstance(method, GNNRet):
+        if isinstance(method, GNNRet) or isinstance(method, NovelGATMethod):
             method.build_index(documents)
             qrels_list = [
                 {"query_id": qid, "candidate_ids": list(cids)}
