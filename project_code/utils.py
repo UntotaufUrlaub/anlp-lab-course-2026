@@ -3,7 +3,7 @@
 import argparse
 from typing import Any, Dict, List, Tuple
 
-DEFAULT_RESULTS_FILENAME = "dense_baseline_SAGE_CHARM.json"
+DEFAULT_RESULTS_FILENAME = "comparison_dense_charm_graphsage_n1.json"
 DEFAULT_RESULTS_PATH = f"project_code/results/{DEFAULT_RESULTS_FILENAME}"
 
 
@@ -85,6 +85,7 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument("--n-trials", type=int, default=20)
 
     return parser
+
 
 
 def parse_args(args: Any = None) -> argparse.Namespace:

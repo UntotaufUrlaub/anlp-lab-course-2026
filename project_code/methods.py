@@ -180,6 +180,8 @@ class BM25Baseline(BaseMethod):
         self.doc_ids = []
 
         for doc_id, doc in documents.items():
+            if not doc.get("retrieval_metadata", {}).get("is_candidate", True):
+                continue
             text = prepare_text(
                 doc, include_title=True, include_labels=self.include_labels
             )
@@ -260,6 +262,8 @@ class DenseEmbeddingBaseline(BaseMethod):
         doc_list = list(documents.items())
         texts = []
         for doc_id, doc in doc_list:
+            if doc.get("source_type") == "query":
+                continue
             text = prepare_text(
                 doc, include_title=True, include_labels=self.include_labels
             )
@@ -366,8 +370,14 @@ class CHARMInspiredMethod(BaseMethod):
         )
 
     def build_index(self, documents: Dict, **kwargs):
-        self.doc_ids = list(documents.keys())
-        all_fields = [self._extract_fields(doc) for doc in documents.values()]
+        candidate_items = [
+            (doc_id, doc)
+            for doc_id, doc in documents.items()
+            if doc.get("retrieval_metadata", {}).get("is_candidate", True)
+        ]
+
+        self.doc_ids = [doc_id for doc_id, _ in candidate_items]
+        all_fields = [self._extract_fields(doc) for _, doc in candidate_items]
         total_weight = sum(self.field_weights.values())
 
         weighted_sum = None
@@ -399,7 +409,7 @@ class CHARMInspiredMethod(BaseMethod):
             text = fields[field]
             if not text:
                 continue
-            emb = self.model.encode(text, convert_to_numpy=True)
+            emb = self.model.encode(text, convert_to_numpy=True, show_progress_bar=False)
             weighted_sum = (
                 (weighted_sum + w * emb) if weighted_sum is not None else w * emb
             )
@@ -422,7 +432,7 @@ class SAGEGraphExpansionMethod(BaseMethod):
         github_graph_path=None,
         model_name: str = "all-MiniLM-L6-v2",
         graph_weight: float = 0.15,
-        expansion_factor: int = 5,
+        expansion_factor: int = 2,
         include_labels: bool = True,
     ):
         self.include_labels = include_labels
@@ -486,15 +496,7 @@ class SAGEGraphExpansionMethod(BaseMethod):
 
     # given a document index and document, return the native id for papers and document id for github issues
     def _index_id_for_doc(self, doc_id, doc: Dict, dataset_key: str):
-        if dataset_key == "paper":
-            raw_source = doc.get("raw_source", {}) or {}
-            native_id = raw_source.get("native_id")
-            return str(native_id) if native_id else None
-
-        if dataset_key == "github_issue":
-            return str(doc_id)
-
-        return None
+        return str(doc_id)
 
     # load the graphs from the directories in self.graph_paths
     def _load_graphs(self):
@@ -541,7 +543,7 @@ class SAGEGraphExpansionMethod(BaseMethod):
             graph_node = str(doc_id)
             if graph_node is None:
                 continue
-
+            neighbor_contributions = []
             edge_iterators = [
                 (
                     (target_id, data)
@@ -560,10 +562,18 @@ class SAGEGraphExpansionMethod(BaseMethod):
                         continue
 
                     edge_weight = float(edge_data.get("weight", 1.0))
-                    expanded_scores[neighbor_key] = expanded_scores.get(
-                        neighbor_key, 0.0
-                    ) + (self.graph_weight * base_score * edge_weight)
+                    neighbor_contributions.append((neighbor_key, edge_weight))
 
+            total_edge_weight = sum(
+                weight for _, weight in neighbor_contributions
+            ) + 1e-10
+
+            for neighbor_key, edge_weight in neighbor_contributions:
+                normalized_edge_weight = edge_weight / total_edge_weight
+
+                expanded_scores[neighbor_key] = expanded_scores.get(
+                    neighbor_key, 0.0
+                ) + (self.graph_weight * base_score * normalized_edge_weight* max(0.0, base_scores.get(neighbor_key, 1.0)))
         return expanded_scores
 
     def build_index(
@@ -612,6 +622,8 @@ class SAGEGraphExpansionMethod(BaseMethod):
         self.indexes["id_to_dataset"].clear()
 
         for doc_id, doc in documents.items():
+            if not doc.get("retrieval_metadata", {}).get("is_candidate", True):
+                continue
             dataset_key = self._dataset_key_for_doc(doc)
             if dataset_key is None:
                 continue

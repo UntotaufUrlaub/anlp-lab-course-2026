@@ -14,6 +14,17 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 RESULTS_DIR = PROJECT_ROOT / "results"
 VISUALIZATION_DIR = RESULTS_DIR / "visualizations"
 
+METHOD_COLORS = {
+    "BM25Baseline": "#9CA3AF",
+    "DenseEmbeddingBaseline": "#2563EB",
+    "CHARMInspiredMethod": "#F58202",
+    "SAGEGraphExpansionMethod": "#002060",
+    "GNNRet": "#7030A0",
+    "GraphSage": "#002060",
+    "DenseEmbedding": "#2563EB",
+    "charm": "#F58202",
+}
+
 
 def _as_list(value):
     if isinstance(value, (str, Path)):
@@ -206,11 +217,16 @@ def visualize_bar_chart(
     for method_index, method_name in enumerate(method_names):
         offset = (method_index - (len(method_names) - 1) / 2) * bar_width
         values = [results_by_method[method_name].get(metric, 0) for metric in metrics]
+        color = METHOD_COLORS.get(method_name)
+
         ax.bar(
             [position + offset for position in x_positions],
             values,
             width=bar_width,
             label=method_name,
+            color=color,
+            edgecolor="white",
+            linewidth=0.6,
         )
 
     metric_labels = [metric.replace("_mean", "") for metric in metrics]
@@ -219,13 +235,13 @@ def visualize_bar_chart(
         fontsize=16,
         y=0.98,
     )
-    subtitle = _format_description(description)
-    if subtitle:
-        ax.set_title(
-            subtitle,
-            fontsize=9,
-            pad=10,
-        )
+    # subtitle = _format_description(description)
+    # if subtitle:
+    #     ax.set_title(
+    #         subtitle,
+    #         fontsize=9,
+    #         pad=10,
+    #     )
 
     ax.set_xlabel("Metric")
     ax.set_ylabel("Score")
@@ -233,9 +249,14 @@ def visualize_bar_chart(
     ax.set_xticklabels(metric_labels, rotation=35, ha="right")
     ax.set_ylim(bottom=0)
     ax.grid(axis="y", linestyle="--", alpha=0.35)
-    ax.legend(title="Method")
+    ax.legend(
+        title="Method:",
+        loc="upper left",
+        bbox_to_anchor=(1.01, 1.0),
+        frameon=True,
+    )
 
-    fig.tight_layout()
+    fig.tight_layout(rect=[0, 0, 0.84, 1])
 
     output_path = output_dir / f"benchmark_{_description_slug(description)}.png"
     fig.savefig(output_path, dpi=300, bbox_inches="tight")

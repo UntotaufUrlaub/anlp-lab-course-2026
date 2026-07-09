@@ -86,7 +86,8 @@ def load_jsonl(file_path: str) -> List[Dict]:
 
 
 def load_documents_and_qrels(
-    docs_path: str, qrels_path: str, batch_size: int = None, random_seed: int = None
+    docs_path: str, qrels_path: str, batch_size: int = None, random_seed: int = None, only_linked_queries: bool = False,
+    select_queries:bool=False
 ) -> Tuple[Dict, Dict[str, Set[int]]]:
     """
     Load documents and qrels, organize by dataset.
@@ -96,6 +97,9 @@ def load_documents_and_qrels(
     - qrels_path: Path to qrels JSONL file
     - batch_size: If set, randomly sample this many queries (default: None = use all)
     - random_seed: Random seed for reproducibility
+    - select_queries: If True one can choose to select a certain type of queries by setting only_linked_queries to True
+      or False
+    - only_linked_queries: If True drops all the queries with relation type corpusid_match
 
     Returns:
     - documents: Dict[doc_id -> doc]
@@ -120,6 +124,16 @@ def load_documents_and_qrels(
     qrels = defaultdict(set)
 
     for qrel in qrels_list:
+        # only select the queries if select queries true
+        if select_queries:
+            relation_type = qrel.get("relation_type")
+            if only_linked_queries:
+                if relation_type =="corpusid_match":
+                    continue
+            else:
+                if relation_type !="corpusid_match":
+                    continue
+
         query_id = qrel["query_id"]
         if "candidate_ids" in qrel:
             qrels[query_id].update(qrel["candidate_ids"])
@@ -411,6 +425,8 @@ def main():
         args.qrels_path,
         batch_size=args.batch_size,
         random_seed=args.seed,
+        select_queries=False,
+        # only_linked_queries=True
     )
 
     if args.sample_size is not None:

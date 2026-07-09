@@ -66,9 +66,9 @@ class BenchmarkRunner:
 
         for query_id, ground_truth in tqdm(self.qrels.items(), desc=method_name):
             # Get query document
-            if query_id not in self.documents:
-                logger.warning(f"Query {query_id} not found in documents")
-                continue
+            # if query_id not in self.documents:
+            #     logger.warning(f"Query {query_id} not found in documents")
+            #     continue
 
             query_doc = self.documents[query_id]
             query_text = prepare_text(

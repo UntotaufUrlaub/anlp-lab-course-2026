@@ -196,59 +196,21 @@ def make_paper_to_paper_query_enricher(random_number=200, seed=42):
             min(random_number, len(paper_docs)),
         )
 
-        max_id = max(int(doc["id"]) for doc in docs if str(doc["id"]).isdigit())
-        next_id = max_id + 1
-
-        new_docs = []
         new_qrels = []
 
         for doc in selected_papers:
-            related_ids = doc["relations"]["explicit_related_ids"]
-            title = doc.get("title") or ""
-            abstract = doc.get("main_text") or ""
-            query_text = f"{title}\n\n{abstract}".strip()
+            related_ids = doc.get("relations", {}).get("explicit_related_ids", [])
 
-            if not query_text:
+            if not related_ids:
                 continue
 
-            query_id = str(next_id)
-            next_id += 1
-
-            # new_docs.append({
-            #     "id": query_id,
-            #     "source_dataset": doc.get("source_dataset", "semantic_scholar"),
-            #     "source_type": "query",
-            #     "title": title,
-            #     "main_text": query_text,
-            #     "secondary_texts": [],
-            #     "structured_fields": doc.get("structured_fields", {
-            #         "categorical": {},
-            #         "hierarchical": {},
-            #     }),
-            #     "entities": doc.get("entities", {
-            #         "people": [],
-            #         "organizations": [],
-            #         "projects": [],
-            #         "topics": [],
-            #     }),
-            #     "relations": {"explicit_related_ids": related_ids},
-            #     "retrieval_metadata": {
-            #         "is_queryable": True,
-            #         "is_candidate": False,
-            #     },
-            #     "raw_source": doc.get("raw_source", {
-            #         "native_id": None,
-            #         "url": None,
-            #     }),
-            # })
-
             new_qrels.append({
-                "query_id": query_id,
+                "query_id": str(doc["id"]),
                 "candidate_ids": [str(x) for x in related_ids],
                 "relation_type": "citation",
             })
 
-        return docs + new_docs, qrels + new_qrels
+        return docs, qrels + new_qrels
 
     return enrich
 

@@ -127,65 +127,93 @@ def process_github(issues_df, linked_df, id_counter, gh_id_map):
 def process_papers(queries_df, corpus_df, id_counter, paper_id_map):
     docs, qrels = [], []
 
-    # Corpus
-    for _, r in corpus_df.iterrows():
-        corpusid = str(r["corpusid"])
-        id = str(id_counter["count"])
-        id_counter["count"] += 1
-        paper_id_map[corpusid] = id  # Map original corpusid to global ID
+    # Pass 1: assign internal IDs to all papers first
+    corpus_rows = list(corpus_df.iterrows())
 
-        # changed citations slightly because before the cited list was always empty
+    for _, r in corpus_rows:
+        corpusid = str(r["corpusid"])
+        paper_id = str(id_counter["count"])
+        id_counter["count"] += 1
+        paper_id_map[corpusid] = paper_id
+
+    # Pass 2: build paper docs, now citations can be mapped
+    for _, r in corpus_rows:
+        corpusid = str(r["corpusid"])
+        paper_id = paper_id_map[corpusid]
+
         citations = r.get("citations")
-        cited = [] if citations is None else [int(x) for x in citations]
+        citation_ids = [] if citations is None else [str(x) for x in citations]
+
+        mapped_citations = [
+            paper_id_map[cited_id]
+            for cited_id in citation_ids
+            if cited_id in paper_id_map
+        ]
+
         full = r.get("full_paper")
+
         docs.append(
             make_doc(
-                id=id,
+                id=paper_id,
                 source_dataset="semantic_scholar",
                 source_type="paper",
                 title=r.get("title"),
                 main_text=r.get("abstract") or "",
                 secondary_texts=[full] if isinstance(full, str) and full else [],
-                explicit_related_ids=cited,
+                explicit_related_ids=mapped_citations,
                 is_queryable=False,
                 native_id=corpusid,
             )
         )
 
-    # Queries
+    # Queries: map gold corpus IDs to internal paper IDs
     for query_set, group in queries_df.groupby("query_set"):
-        for idx, (_, r) in enumerate(group.iterrows()):
+        for _, r in group.iterrows():
             qid = str(id_counter["count"])
             id_counter["count"] += 1
-            # Get corpusids (pickle preserves list type)
+
             corpusids = (
                 r["corpusids"]
                 if isinstance(r["corpusids"], list)
                 else r["corpusids"].tolist()
             )
-            gold = [str(x) for x in corpusids]
-            # docs.append(
-            #     make_doc(
-            #         id=qid,
-            #         source_dataset=str(query_set),
-            #         source_type="query",
-            #         title=None,
-            #         main_text=r.get("query") or "",
-            #         categorical={
-            #             "specificity": (
-            #                 str(r["specificity"])
-            #                 if pd.notna(r.get("specificity"))
-            #                 else ""
-            #             ),
-            #             "quality": (
-            #                 str(r["quality"]) if pd.notna(r.get("quality")) else ""
-            #             ),
-            #         },
-            #         explicit_related_ids=gold,
-            #         is_candidate=False,
-            #     )
-            # )
-            qrels.append(make_qrel(qid, gold, "corpusid_match"))
+
+            gold_corpus_ids = [str(x) for x in corpusids]
+
+            mapped_gold_ids = [
+                paper_id_map[cid]
+                for cid in gold_corpus_ids
+                if cid in paper_id_map
+            ]
+
+            if not mapped_gold_ids:
+                continue
+
+            docs.append(
+                make_doc(
+                    id=qid,
+                    source_dataset=str(query_set),
+                    source_type="query",
+                    title=None,
+                    main_text=r.get("query") or "",
+                    categorical={
+                        "specificity": (
+                            str(r["specificity"])
+                            if pd.notna(r.get("specificity"))
+                            else ""
+                        ),
+                        "quality": (
+                            str(r["quality"])
+                            if pd.notna(r.get("quality"))
+                            else ""
+                        ),
+                    },
+                    explicit_related_ids=mapped_gold_ids,
+                    is_candidate=False,
+                )
+            )
+
+            qrels.append(make_qrel(qid, mapped_gold_ids, "corpusid_match"))
 
     return docs, qrels
 
