@@ -224,7 +224,7 @@ The project uses a **tiered retrieval approach**, progressively adding complexit
      1. Dense retrieval baseline → top-K × expansion_factor candidates (K typically 10)
      2. For each seed document, expand to both in-neighbors and out-neighbors in graph
      3. Neighbor scores: e^{-(1-w)}$ where w is edge weight
-     4. Weighted combination: `graph_weight * neighbor_score + (1-graph_weight) * base_score`
+     4. Weighted combination: `graph_weight * neighbor_score (if in top k initially retrieved) + normalised edge weight * base_score`
    - **Result**: Empirically shows +2-4% recall improvements (dataset-dependent on graph quality)
    - **Requirements**: Pre-built graphs in `project_code/graphs/` (see SageGraph_construction.py)
    - Hyperparameters: graph_weight=0.15 (default), expansion_factor=2
