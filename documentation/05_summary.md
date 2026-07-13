@@ -9,14 +9,13 @@
 5. [Approach & Methodology](#approach--methodology)
 6. [Technical Implementation](#technical-implementation)
 7. [Key Methods & Baselines](#key-methods--baselines)
-8. [Repository Structure](#repository-structure)
-9. [Setup & Environment](#setup--environment)
-10. [Pipeline & Execution](#pipeline--execution)
-11. [Evaluation Metrics](#evaluation-metrics)
-12. [Key Technologies](#key-technologies)
-13. [Literature Review Summary](#literature-review-summary)
-14. [Results & Benchmarks](#results--benchmarks)
-15. [References & Resources](#references--resources)
+8. [Setup & Environment](#setup--environment)
+9. [Pipeline & Execution](#pipeline--execution)
+10. [Evaluation Metrics](#evaluation-metrics)
+11. [Key Technologies](#key-technologies)
+12. [Literature Review Summary](#literature-review-summary)
+13. [Results & Benchmarks](#results--benchmarks)
+14. [References & Resources](#references--resources)
 
 ---
 
@@ -59,17 +58,21 @@ Traditional retrieval methods treat these as either:
 - Citation relationships indicate relevance
 - Hierarchy: Authors → Research Groups/Institutes, Field of Study → Specific Topic → Subtopic
 
-### Supervisor Emphasis
+### Research Focus
 
-> Focus on **embeddings + GNN refinement layers** trained on small datasets
-
-This suggests a practical, scalable approach to leveraging graph structure without excessive computational overhead.
+This project focuses on **embeddings + GNN refinement layers** trained on small datasets. This practical approach leverages graph structure without excessive computational overhead while exploring how structural signals align with relevance in real-world semi-structured data.
 
 ---
 
 ## Research Questions
 
-### Primary Questions
+### Primary Research Question
+
+**Can retrieval be improved by exploiting structural relationships between documents rather than treating them as isolated text?**
+
+This core question motivates investigating whether graph structure, metadata, and learned refinement layers can enhance ranking beyond pure text similarity.
+
+### Sub-Research Questions
 
 1. **Which structural signals are most useful for improving retrieval?**
    - Do hierarchical categorical fields enhance ranking?
@@ -186,10 +189,12 @@ The project uses a **tiered retrieval approach**, progressively adding complexit
    - Zero additional hyperparameters (inherits model, batch_size, device)
 
 2. **CHARMInspiredMethod** (`charm`)
+   - Cascading Hierarchical Attention Retrieval Model (CHARM) by
+     Freymuth, N., Liu, D., Ricatte, T., & Mansour, S. (2025). Hierarchical Multi-field Representations for Two-Stage E-commerce Retrieval (arXiv:2501.18707). arXiv. https://doi.org/10.48550/arXiv.2501.18707
    - **Per-field embeddings**: Separate Sentence Transformer encodings for:
      - `metadata`: structured categorical/hierarchical fields
      - `title`: document title
-     - `main_text`: full document content
+     - `main_text`: full document content e.g. abstract/issue description
    - **Weighted aggregation**: Combines field vectors with learned weights
      - metadata: 1.0 × e_metadata
      - title: 1.0 × e_title
@@ -395,77 +400,6 @@ All methods inherit from `BaseMethod` abstract class with `build_index()` and `r
 - `bge-small-en` – BM25-style sparse-to-dense bridge
 - `e5-base` – Multilingual, strong general-purpose embeddings
 - `all-mpnet-base-v2` – Higher quality but slower
-
----
-
-## Repository Structure
-
-```
-project_root/
-├── documentation/                 # Project documentation
-│   ├── 00_notes.md               # Meeting notes, observations
-│   ├── 01_project_specification_and_timeline.md
-│   ├── 02_familiarization_guide.md
-│   ├── 03_literature_review.md
-│   ├── 04_approach_overview.md
-│   ├── 05_documentation.md       # This file
-│   └── 99_AI_usage_declaration.md
-│
-├── project_datasets/             # Dataset ETL pipeline
-│   ├── __init__.py
-│   ├── common_data_schema.md     # Unified schema documentation
-│   ├── data_set_alignment.py     # Download & normalize
-│   ├── data_set_enrichment.py    # Enrich with metadata
-│   ├── json_processing.py        # GitHub preprocessing
-│   ├── label_mapping.csv         # Label mappings
-│   ├── OpenAI_API_calling.py     # LLM integration
-│   ├── SemanticScholar_API_calling.py
-│   ├── paper_validation.py
-│   ├── GH_issues_PRs.ipynb       # GitHub exploratory analysis
-│   ├── scientific_papers.ipynb   # Papers exploratory analysis
-│   ├── final_data_overview.ipynb # Final data summary
-│   └── cache/                    # Cached datasets
-│
-├── project_code/                 # Retrieval benchmark
-│   ├── __init__.py
-│   ├── benchmark.py              # Main benchmark runner
-│   ├── benchmarkRunner.py        # High-level runner
-│   ├── benchmark_visualization.py # Result visualization
-│   ├── methods.py                # Retrieval method implementations
-│   ├── metrics.py                # Evaluation metrics
-│   ├── SageGraph_construction.py # SAGE graph building
-│   ├── utils.py                  # Shared utilities
-│   ├── validate_benchmark.py     # Pre-flight validation
-│   ├── cache/                    # Cached embeddings
-│   ├── graphs/                   # Constructed graphs
-│   └── results/                  # Benchmark outputs
-│
-├── output/                       # ETL pipeline outputs
-│   ├── documents.jsonl           # Aligned base documents
-│   ├── documents_enriched_01.jsonl  # + metadata
-│   ├── documents_enriched_02.jsonl  # + query enrichment
-│   ├── documents_enriched_03.jsonl  # + hierarchy
-│   ├── qrels.jsonl               # Ground truth queries
-│   └── qrels_enriched_02.jsonl   # Enriched queries
-│
-├── results/                      # Final benchmark results
-│   ├── method_results.json       # Aggregated results
-│   └── visualizations/           # Charts, plots
-│
-├── cache/                        # Large cached files
-│   ├── paper_cache.json          # Semantic Scholar cache
-│   ├── hierarchy_cache_nano_batch.json
-│   └── dense_*.joblib            # Cached embeddings
-│
-├── tests/                        # Unit tests
-│   └── test_benchmark_results_metadata.py
-│
-├── MyVenv/                       # Virtual environment
-├── backup/                       # Backup files
-├── README.md                     # Quick start guide
-├── requirements.txt              # Python dependencies
-└── Poster_description.txt        # Poster session info
-```
 
 ---
 
@@ -778,15 +712,15 @@ Returns dictionary aggregated over all queries as `{metric_mean, ...}`.
 
 Based on published papers (confidence levels estimated):
 
-| Method                              | Recall@100 Lift | NDCG Lift   | Notes                                 |
-| ----------------------------------- | --------------- | ----------- | ------------------------------------- |
-| Dense Baseline (all-MiniLM-L6-v2)   | –               | –           | Reference point                       |
-| BM25 Baseline                       | -20 to -30%     | -15 to -25% | Loses semantic similarity             |
-| Dense + Labels (`dense_labels`)     | +2 to +5%       | +1 to +3%   | Metadata adds limited signal to text  |
-| CHARM (`charm`)                     | +1 to +4%       | +1 to +2%   | Per-field weighting less effective    |
-| SAGE Graph Expansion (`graph_sage`) | +2 to +6%       | +2 to +5%   | Depends on pre-built graph quality    |
-| GNNRet (`gnn_ret`)                  | +5 to +12%      | +4 to +10%  | Learns entity-label graph propagation |
-| NovelGAT (`novel_gat`)              | +4 to +10%      | +3 to +8%   | Attention weighting less stable       |
+| Method                              | Recall@100 Lift   | NDCG Lift     | Notes                                                           |
+| ----------------------------------- | ----------------- | ------------- | --------------------------------------------------------------- |
+| Dense Baseline (all-MiniLM-L6-v2)   | –                 | –             | Reference point                                                 |
+| BM25 Baseline                       | -20 to -30%       | -15 to -25%   | Loses semantic similarity                                       |
+| Dense + Labels (`dense_labels`)     | +1 to -1%         | +1 to -1%     | Metadata alone insufficient; limited signal over text           |
+| CHARM (`charm`)                     | +3 to +5%         | +3 to +5%     | Per-field weighting yields limited improvement over text        |
+| SAGE Graph Expansion (`graph_sage`) | +10 to +15%       | +10 to +15%   | Graph provides gains when structure aligns with relevance       |
+| GNNRet (`gnn_ret`)                  | +15 to +17%       | +15 to +17%   | Graph structure strongest gain; learns entity-label propagation |
+| NovelGAT (`novel_gat`)              | ----------------- | ------------- | Graph refinement; learns attention-weighted propagation         |
 
 ### Actual Results Format
 
