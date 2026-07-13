@@ -106,35 +106,28 @@ Each dataset must contain:
 
 **GitHub Issues**:
 
-- Existing issue links (30-50% of issues in popular repos)
-- Duplicate issue markers
+- Existing issue links
 - Same-PR resolution relationships
 
 **Scientific Papers**:
 
-- Citation relationships
-- Shared authorship
-- Same research group/institution
+- Given by Natural Language Query from the data set
 
 #### 2. Weak Supervision (Scalable)
 
 **GitHub Issues**:
 
 - Issues with same labels (related, not duplicates)
-- Issues resolved by same PR
 - Issues in same repository/component
 
 **Scientific Papers**:
 
+- Shared authorship
+- Same research group/institution
+- Citation relationships
 - Papers in same research area/venue/time period
 - Authors from same institution
 - Papers citing common references
-
-#### 3. Synthetic Generation (If Needed)
-
-- Use LLMs to rate similarity
-- Apply hierarchical distance metrics
-- Domain-specific synthetic labeling
 
 ### Recommended Datasets
 
@@ -201,9 +194,7 @@ The project uses a **tiered retrieval approach**, progressively adding complexit
      - main_text: 2.0 × e_main_text
      - Final score: weighted mean of per-field cosine similarities
    - **Adaptive filtering**: Detects and skips low-quality metadata (specificity check)
-   - **Two-stage pipeline**:
-     1. First-stage: Dense retrieval on combined representation
-     2. Second-stage: Per-field reranking of top-k candidates
+   - **Similarity**: Dense retrieval on aggregated embedding
    - **No fine-tuning**: All embeddings frozen from Sentence Transformer
    - Hyperparameters: field_weights (default as above)
 
