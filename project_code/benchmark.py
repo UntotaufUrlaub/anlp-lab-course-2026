@@ -90,8 +90,12 @@ def load_jsonl(file_path: str) -> List[Dict]:
 
 
 def load_documents_and_qrels(
-    docs_path: str, qrels_path: str, batch_size: int = None, random_seed: int = None, only_linked_queries: bool = False,
-    select_queries:bool=False
+    docs_path: str,
+    qrels_path: str,
+    batch_size: int = None,
+    random_seed: int = None,
+    only_linked_queries: bool = False,
+    select_queries: bool = False,
 ) -> Tuple[Dict, Dict[str, Set[int]]]:
     """
     Load documents and qrels, organize by dataset.
@@ -132,10 +136,10 @@ def load_documents_and_qrels(
         if select_queries:
             relation_type = qrel.get("relation_type")
             if only_linked_queries:
-                if relation_type =="corpusid_match":
+                if relation_type == "corpusid_match":
                     continue
             else:
-                if relation_type !="corpusid_match":
+                if relation_type != "corpusid_match":
                     continue
 
         query_id = qrel["query_id"]
@@ -226,7 +230,8 @@ def sample_documents(
 
         if len(sampled_doc_ids) + len(group_ids - sampled_doc_ids) > sample_size:
             # Stop before we exceed the requested sample budget.
-            break
+            # break
+            continue  # TODO: better for GAT issues?
 
         sampled_doc_ids.update(group_ids)
         sampled_qrels[query_id] = candidate_ids
@@ -303,11 +308,13 @@ EXPERIMENTAL_METHODS = {
         "label": "GraphSage",
     },
     "gnn_ret": {
-        "builder": lambda args: GNNRet(model_name=args.embedding_model, epochs=20, lr=0.01),
+        "builder": lambda args: GNNRet(
+            model_name=args.embedding_model, epochs=20, lr=0.01
+        ),
         "label": "GNNRet",
     },
     "novel_gat": {
-        "builder": lambda args: NovelGATMethod(model_name=args.embedding_model, epochs=60, lr=0.1),
+        "builder": lambda args: NovelGATMethod(model_name=args.embedding_model),
         "label": "NovelGAT",
     },
 }
@@ -340,6 +347,11 @@ def build_benchmark_config(
         "document_count": len(documents),
         "query_count": len(qrels),
     }
+
+
+# ---------------------------------------------------------------------------
+# hyperparam search
+# ---------------------------------------------------------------------------
 
 
 def hyperparam_search(args, documents, qrels, n_trials=20, seed=42):
@@ -406,6 +418,76 @@ def hyperparam_search(args, documents, qrels, n_trials=20, seed=42):
     return results
 
 
+def hyperparam_search_gat(args, documents, qrels, n_trials=20, seed=42):
+    random.seed(seed)
+
+    search_space = {
+        "hidden_dim": [4, 8, 16, 32],
+        "lr": [0.001, 0.01, 0.05, 0.1],
+        "margin": [0.05, 0.1, 0.2, 0.5],
+        "epochs": [20, 40, 60, 100],
+        "O": [10, 25, 50],
+        "max_entity_cluster": [10, 20, 30, 50],
+        "train_ratio": [0.3, 0.5, 0.7],
+    }
+
+    primary_metric = f"ndcg@{max(args.k_values)}_mean"
+    results = []
+    seen = set()
+
+    qrels_list = [
+        {"query_id": qid, "candidate_ids": list(cids)} for qid, cids in qrels.items()
+    ]
+
+    trial = 0
+    while trial < n_trials:
+        params = {k: random.choice(v) for k, v in search_space.items()}
+        key = tuple(params[k] for k in sorted(params))
+        if key in seen:
+            continue
+        seen.add(key)
+        trial += 1
+
+        logger.info(f"\nTrial {trial}/{n_trials}: {params}")
+
+        method = NovelGATMethod(model_name=args.embedding_model, **params)
+        label = "NovelGAT_" + "_".join(f"{k}{v}" for k, v in params.items())
+
+        method.build_index(documents)
+        method.train(qrels_list)
+
+        runner = BenchmarkRunner(
+            documents,
+            qrels,
+            k_values=args.k_values,
+            debug=False,
+            cache_dir=Path(args.output_path).parent / "cache",
+        )
+        runner.run_method(label, method, use_cache=False)
+
+        score = runner.results[label].get(primary_metric, 0.0)
+        results.append(
+            {**params, "label": label, "score": score, "metrics": runner.results[label]}
+        )
+        logger.info(f"  → {primary_metric}: {score:.4f}")
+
+    results.sort(key=lambda r: r["score"], reverse=True)
+
+    print("\n" + "=" * 80)
+    print(f"HYPERPARAM SEARCH RESULTS - NovelGAT (ranked by {primary_metric})")
+    print("=" * 80)
+    for r in results[:5]:
+        print(
+            f"  hidden_dim={r['hidden_dim']} lr={r['lr']} margin={r['margin']} "
+            f"epochs={r['epochs']} O={r['O']} max_entity_cluster={r['max_entity_cluster']} "
+            f"train_ratio={r['train_ratio']} → {primary_metric}={r['score']:.4f}"
+        )
+
+    best = results[0]
+    logger.info(f"\nBest config: {best}")
+    return results
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -447,9 +529,14 @@ def main():
         )
 
     if getattr(args, "hyperparam_search", False):
-        hyperparam_search(
-            args, documents, qrels, n_trials=args.n_trials, seed=args.seed
-        )
+        if "novel_gat" in args.methods:
+            hyperparam_search_gat(
+                args, documents, qrels, n_trials=args.n_trials, seed=args.seed
+            )
+        else:
+            hyperparam_search(
+                args, documents, qrels, n_trials=args.n_trials, seed=args.seed
+            )
         return
 
     # Initialize benchmark runner

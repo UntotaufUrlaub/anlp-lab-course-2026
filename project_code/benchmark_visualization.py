@@ -17,12 +17,14 @@ VISUALIZATION_DIR = RESULTS_DIR / "visualizations"
 METHOD_COLORS = {
     "BM25Baseline": "#9CA3AF",
     "DenseEmbeddingBaseline": "#2563EB",
+    "dense_labels": "#2C8B3C",
     "CHARMInspiredMethod": "#F58202",
     "SAGEGraphExpansionMethod": "#002060",
     "GNNRet": "#7030A0",
     "GraphSage": "#002060",
     "DenseEmbedding": "#2563EB",
     "charm": "#F58202",
+    "NovelGAT": "#B63131",
 }
 
 
