@@ -12,7 +12,7 @@ from pathlib import Path
 
 import numpy as np
 
-import project_datasets
+# import project_datasets
 
 # --------------------------------- logger ---------------------------------------------------------
 
@@ -197,9 +197,7 @@ def add_document_nodes(graph, entries):
 
 # add related edges
 # valid ids are all extracted ids that have been added to the graph
-def add_explicit_relation_edges(
-    graph, entries, valid_ids, relation, weight=1.0
-):
+def add_explicit_relation_edges(graph, entries, valid_ids, relation, weight=1.0):
     edge_count = 0
 
     # go through each entry and if not a valid entry skip
@@ -225,9 +223,7 @@ def add_explicit_relation_edges(
     return edge_count
 
 
-def add_shared_field_edges(
-    graph, entries, fields, weight=0.5, max_bucket_size=50
-):
+def add_shared_field_edges(graph, entries, fields, weight=0.5, max_bucket_size=50):
     edge_count = 0
 
     for field_name, field_path in fields.items():
@@ -269,9 +265,7 @@ def add_shared_field_edges(
     return edge_count
 
 
-def add_hierarchical_path_edges(
-    graph, entries, weight=0.75, max_bucket_size=50
-):
+def add_hierarchical_path_edges(graph, entries, weight=0.75, max_bucket_size=50):
     buckets = defaultdict(list)
     edge_count = 0
 
@@ -430,16 +424,12 @@ class PaperGraph(SAGEGraph):
             # "organizations": ["entities", "organizations"],
         }
 
-        metadata_edges = add_shared_field_edges(
-            self.graph, paper_entries, fields
-        )
+        metadata_edges = add_shared_field_edges(self.graph, paper_entries, fields)
         logger.info(f"\nAdded {metadata_edges} paper metadata edges.")
 
         # 4. add hierarchical edges
         logger.info(f"\nBuilding graph relations using hierarchical edges...")
-        hierarchical_edges = add_hierarchical_path_edges(
-            self.graph, paper_entries
-        )
+        hierarchical_edges = add_hierarchical_path_edges(self.graph, paper_entries)
         logger.info(f"\nAdded {hierarchical_edges} paper hierarchical edges.")
 
         return self.graph
@@ -508,22 +498,23 @@ class GitHubGraph(SAGEGraph):
             "topics": ["entities", "topics"],
         }
 
-        metadata_edges = add_shared_field_edges(
-            self.graph, github_entries, fields
-        )
+        metadata_edges = add_shared_field_edges(self.graph, github_entries, fields)
         logger.info(f"\nAdded {metadata_edges} GitHub metadata edges.")
 
         logger.info(f"\nBuilding GitHub graph relations using hierarchical data...")
-        hierarchical_edges = add_hierarchical_path_edges(
-            self.graph, github_entries
-        )
+        hierarchical_edges = add_hierarchical_path_edges(self.graph, github_entries)
         logger.info(f"\nAdded {hierarchical_edges} GitHub hierarchical edges.")
 
         return self.graph
 
 
 if __name__ == "__main__":
-    total_dataset_path = PROJECT_DIR / "project_datasets" / "output" / "documents_enriched_03.jsonl"
+    total_dataset_path = (
+        # PROJECT_DIR / "project_datasets" / "output" / "documents_enriched_03.jsonl"
+        PROJECT_DIR
+        / "output"
+        / "documents_enriched_03.jsonl"
+    )
 
     # paper_graph construction
     paper_entries = load_entries(total_dataset_path, "paper")

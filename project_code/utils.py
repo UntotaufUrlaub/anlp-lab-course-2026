@@ -14,13 +14,12 @@ def create_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--docs-path",
-        default="project_datasets/output/documents_enriched_03.jsonl",
+        default="output/documents_enriched_03.jsonl",
         help="Path to documents JSONL file",
     )
-    # TODO use qrels instead of enriched bc citation matching?
     parser.add_argument(
         "--qrels-path",
-        default="project_datasets/output/qrels_enriched_02.jsonl",
+        default="output/qrels_enriched_02.jsonl",
         help="Path to qrels JSONL file",
     )
     parser.add_argument(
@@ -78,7 +77,7 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--methods",
         nargs="+",
-        default=["charm", "graph_sage", "gnn_ret", "novel_gat"],
+        default=["dense_labels", "charm", "graph_sage", "gnn_ret", "novel_gat"],
         choices=["dense_labels", "charm", "graph_sage", "gnn_ret", "novel_gat"],
         help="Experimental methods to benchmark against baseline. Available: dense_labels, charm, graph_sage, gnn_ret, novel_gat",
     )
@@ -86,7 +85,6 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument("--n-trials", type=int, default=20)
 
     return parser
-
 
 
 def parse_args(args: Any = None) -> argparse.Namespace:
@@ -118,7 +116,6 @@ def _flatten_hierarchical(hierarchical) -> List[str]:
     return []
 
 
-# TODO refactor categorical extract to method
 def extract_metadata_text(doc: Dict) -> str:
     structured = doc.get("structured_fields", {}) or {}
     categorical = structured.get("categorical", {}) or {}
@@ -135,7 +132,7 @@ def extract_metadata_text(doc: Dict) -> str:
     return " ".join(parts)
 
 
-# TODO does order of concatenating matters?
+# relic
 def prepare_text_dennis(
     doc: Dict, include_title: bool = True, include_labels: bool = False
 ) -> str:

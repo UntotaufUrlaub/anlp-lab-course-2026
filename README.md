@@ -14,11 +14,19 @@ This repository contains a retrieval benchmark pipeline for aligning a mixed cor
 - `project_datasets/data_set_alignment.py` — download, normalize, align, and export the base documents and qrels files
 - `project_datasets/json_processing.py` — preprocess and normalize GitHub issue metadata
 - `project_datasets/data_set_enrichment.py` — run the three enrichment stages over the aligned dataset
+- `project_datasets/SemanticScholar_API_calling.py` — retrieve paper metadata used by enrichment
+- `project_datasets/OpenAI_API_calling.py` — request and process hierarchy enrichment
+- `project_datasets/paper_validation.py` — validate hierarchy-enriched paper data
 - `project_code/benchmark.py` — run retrieval benchmarks on the aligned/enriched corpus
 - `project_code/methods.py` — retrieval method implementations used by the benchmark
+- `project_code/SageGraph_construction.py` — construct paper and GitHub graphs for graph-based retrieval
+- `project_code/benchmark_visualization.py` — generate comparison charts from benchmark result files
 - `project_code/utils.py` — shared CLI parsing and text preparation helpers for the benchmark
 - `project_code/validate_benchmark.py` — verify input data, dependencies, and output paths
+- `tests/test_benchmark_results_metadata.py` — regression test for benchmark result metadata
 - `requirements.txt` — required Python packages
+
+Supporting material is in `documentation/`, with notebooks in `project_datasets/` for dataset exploration and validation. Project deliverables are stored in `final_report.txt`, `Poster_description.txt`, `FinalPoster.pdf`, and `Poster_Template.pptx`.
 
 ## 1. Set up the environment
 
@@ -115,7 +123,30 @@ The order of the three stages should be preserved.
 - The enrichment caches allow interrupted runs to resume without re-querying data that was already collected.
 - A validation helper for hierarchy outputs is available in `project_datasets/paper_validation.py`.
 
-## 4. Validate the benchmark setup
+## 4. Build graph representations
+
+After the enriched dataset is available, construct the paper and GitHub graphs used by the graph-based retrieval methods:
+
+```bash
+python project_code/SageGraph_construction.py
+```
+
+This script reads the enriched corpus from `output/documents_enriched_03.jsonl`, builds one graph for scientific papers and one graph for GitHub issues, and saves them under `project_code/graphs/` as:
+
+- `paper_graph.pkl`
+- `github_graph.pkl`
+
+The construction process does the following:
+
+- creates individual document nodes for valid paper and GitHub entries
+- adds explicit relation edges such as citations and linked issues
+- adds metadata-based edges from shared venue, author, label, topic, and related fields
+- adds hierarchical-path edges from scientific taxonomy and structured metadata
+- prints a short summary of node and neighbor statistics for inspection
+
+The saved graphs are then loaded by the graph-aware retrieval methods in the benchmark pipeline.
+
+## 5. Validate the benchmark setup
 
 ```bash
 python project_code/validate_benchmark.py
@@ -123,7 +154,7 @@ python project_code/validate_benchmark.py
 
 This checks for the presence and readability of the base data files, the benchmark script, and the expected output directory.
 
-## 5. Experimental methods and baselines
+## 6. Experimental methods and baselines
 
 The benchmark compares a small set of retrieval strategies that differ in how they use document structure, metadata, and graph information.
 
@@ -137,23 +168,30 @@ The benchmark compares a small set of retrieval strategies that differ in how th
 - `CHARMInspiredMethod` — a structure-aware retrieval method that combines metadata, title, and main-text signals with weighted field embeddings and a two-stage reranking strategy.
 - `SAGEGraphExpansionMethod` — a graph-enhanced retrieval method that expands retrieval scores using neighborhood information from paper and issue graphs.
 - `GNNRet` — a graph-propagation retrieval method that builds an entity-shared document graph, selects the closest seed nodes to the query, and spreads relevance through the graph for L rounds using a learned per-round mixing weight
+- `NovelGATMethod` — a graph-attention retrieval method that trains a GAT-based scorer using the query relevance pairs.
 
 ### Notes
 
 - The benchmark can be run with different combinations of baselines and experimental methods via the `--baseline` and `--methods` flags.
 - The default experiment set includes the dense baseline and the two experimental methods above.
 
-## 6. Run the retrieval benchmark
+## 7. Run the retrieval benchmark
 
-The benchmark now defaults to the enriched dataset files defined in `project_code/utils.py`:
+The dataset scripts above write enriched files under `output/`. The current benchmark defaults in `project_code/utils.py` point to `project_datasets/output/`, so either place/copy the generated files there or pass the paths explicitly:
 
-- documents: `output/documents_enriched_03.jsonl`
-- qrels: `output/qrels_enriched_02.jsonl`
+- documents: `project_datasets/output/documents_enriched_03.jsonl`
+- qrels: `project_datasets/output/qrels_enriched_02.jsonl`
 
 Run the full benchmark with:
 
 ```bash
 python project_code/benchmark.py
+```
+
+For the files produced by the dataset scripts in the quick-start flow, use:
+
+```bash
+python project_code/benchmark.py --docs-path output/documents_enriched_03.jsonl --qrels-path output/qrels_enriched_02.jsonl
 ```
 
 Useful variants:
@@ -176,17 +214,19 @@ Common CLI flags include:
 - `--baseline` and `--methods` to select the retrieval methods to evaluate
 - `--hyperparam-search` and `--n-trials` for optional tuning runs
 
+Available method values are `dense_labels`, `charm`, `graph_sage`, `gnn_ret`, and `novel_gat`; the baseline values are `bm25` and `dense`.
+
 To run GNNRet specifically:
 
 ```bash
 python project_code/benchmark.py --methods gnn_ret
 ```
 
-## 7. View benchmark results
+## 8. View benchmark results
 
 The benchmark writes its results to:
 
-- `results/method_results.json`
+- `project_code/results/comparison_dense_charm_graphsage_n1.json` by default, or the path supplied with `--output-path`
 
 To create a comparison plot from the saved benchmark results, run:
 
@@ -194,9 +234,9 @@ To create a comparison plot from the saved benchmark results, run:
 python project_code/benchmark_visualization.py
 ```
 
-The generated chart will be written under `results/visualizations/`.
+The generated chart will be written under `project_code/results/visualizations/`.
 
-## 8. Notes
+## 9. Notes
 
 - `project_datasets/data_set_alignment.py` should be run before the enrichment and benchmark steps because the later stages rely on the generated JSONL files.
 - If the dataset download step fails, verify that the required packages are installed and that any required credentials are configured.
@@ -211,4 +251,4 @@ The generated chart will be written under `results/visualizations/`.
 5. Run `python project_code/validate_benchmark.py`.
 6. Run `python project_code/benchmark.py`.
 7. Generate a plot with `python project_code/benchmark_visualization.py`.
-8. Inspect the output in `results/method_results.json` and `results/visualizations/`.
+8. Inspect the output in `project_code/results/comparison_dense_charm_graphsage_n1.json` and `project_code/results/visualizations/`.

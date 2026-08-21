@@ -231,7 +231,7 @@ def sample_documents(
         if len(sampled_doc_ids) + len(group_ids - sampled_doc_ids) > sample_size:
             # Stop before we exceed the requested sample budget.
             # break
-            continue  # TODO: better for GAT issues?
+            continue  # better for GAT issues?
 
         sampled_doc_ids.update(group_ids)
         sampled_qrels[query_id] = candidate_ids
